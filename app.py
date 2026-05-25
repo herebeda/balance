@@ -123,14 +123,22 @@ if uploaded_file is not None:
                         
                         st.success("🎉 SUCCESS: GRAMEENPHONE SPLIT BUNDLE GENERATED!")
                         
-                        # সরাসরি ক্লিকেবল বাটন লিংক ইনজেকশন
-                        button_html = """
-                            <div style="text-align: center; margin-top: 20px;">
-                                <a href="CHANGE_TO_REAL_URL" target="_blank" style="text-decoration: none;">
+                        # ১. ইউআরএল-এর চারপাশের অতিরিক্ত স্পেস ও স্ল্যাশ একদম নিখুঁতভাবে পরিষ্কার করা
+                        clean_url = bkash_url.strip().rstrip('/')
+                        
+                        # ২. সম্পূর্ণ র বাটন টেক্সট এরিয়া তৈরি (কোনো f-string বা পাইথন ফরম্যাটিং ছাড়া)
+                        # সরাসরি টেক্সট এরিয়াতে লিঙ্কটি দিয়ে দেওয়া হচ্ছে যাতে কপি করতে সুবিধা হয়
+                        st.info("💡 যদি বাটন কাজ না করে, নিচের বক্স থেকে লিঙ্কটি দ্রুত কপি করে ব্রাউজারে পেস্ট করুন:")
+                        st.text_area("bKash Live Gateway URL (Copy if needed)", value=clean_url, height=70)
+                        
+                        # ৩. কাস্টম এইচটিএমএল বাটন (Single Quotes দিয়ে সুরক্ষিত করা)
+                        button_html = f"""
+                            <div style="text-align: center; margin-top: 15px; margin-bottom: 20px;">
+                                <a href='{clean_url}' target="_blank" style="text-decoration: none;">
                                     <div style="
                                         background-color: #E2136E; 
                                         color: white; 
-                                        padding: 14px 28px; 
+                                        padding: 15px 30px; 
                                         text-align: center; 
                                         border-radius: 8px; 
                                         font-size: 18px; 
@@ -144,8 +152,7 @@ if uploaded_file is not None:
                                     </div>
                                 </a>
                             </div>
-                        """.replace("CHANGE_TO_REAL_URL", bkash_url)
-                        
+                        """
                         st.markdown(button_html, unsafe_allow_html=True)
                     else:
                         st.error("GP Server rejected payload or connection dropped.")
