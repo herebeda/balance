@@ -1,4 +1,5 @@
-libnss3
+libgl1-mesa-glx
+libglib2.0-0libnss3
 libatk-bridge2.0-0
 libx11-xcb1
 libxcb-dri3-0
