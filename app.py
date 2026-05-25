@@ -3,7 +3,8 @@ import os
 import sys
 import re
 import asyncio
-import json  # <--- এই লাইনটি অবশ্যই যোগ করুন!
+import json
+from datetime import datetime  # <--- এই লাইনটি অবশ্যই যোগ করুন!
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
 @st.cache_resource
