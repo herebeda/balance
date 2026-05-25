@@ -1,22 +1,20 @@
-import asyncio
-import json
-import re
-import sys
 import os
+import sys
 import streamlit as st
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
-# স্ট্রিমলিট ক্লাউডের জন্য গ্যারান্টিড ব্রাউজার ইনস্টলেশন মেকানিজম
 @st.cache_resource
 def initialize_playwright_browser():
-    # কোনো কন্ডিশন ছাড়া অ্যাপ চালুর শুরুতে একবার ফ্রেশ ক্রোমিয়াম ডাউনলোড নিশ্চিত করবে
-    os.system("python -m playwright install chromium")
+    # sys.executable ব্যবহার করায় এটি নিশ্চিতভাবে সঠিক ভার্চুয়াল এনভায়রনমেন্টের পাইথনকে কল করবে
+    os.system(f"{sys.executable} -m playwright install chromium")
     return True
 
-# ফাংশনটি রান করানো হলো
+# ব্রাউজার ইনস্টলেশন রান করা হলো
 initialize_playwright_browser()
 # ========================================================================
+
 from playwright.async_api import async_playwright
+# .... (বাকি কোড সব আগের মতোই থাকবে)
 
 # ==================== CONFIGURATION ====================
 MAX_RECHARGE_LIMIT = 1000  
