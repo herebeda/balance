@@ -4,7 +4,7 @@ import asyncio
 import re
 from playwright.async_api import async_playwright
 
-# পেজ কনফিগারেশন এবং টাইটেল (macOS/Modern Dark Aesthetic Style)
+# পেজ কনফিগারেশন এবং টাইটেল
 st.set_page_config(page_title="GP Recharge Bundle System", page_icon="📱", layout="centered")
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
@@ -15,7 +15,7 @@ if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
 
 st.title("📱 GP Recharge Bundle System")
 
-# ফাইল আপলোড সেকশন
+# فایل আপলোড সেকশন
 uploaded_file = st.file_uploader("Upload 'gp.txt' file containing numbers", type=["txt"])
 
 if uploaded_file is not None:
@@ -31,26 +31,29 @@ if uploaded_file is not None:
     scout_data = st.text_area("Paste your SEU SCOUT output data here:", placeholder="Number: 01713532100 | Exact Balance: 20145 BDT | ...")
     
     if scout_data:
-        # 🎯 ডাইনামিক ব্যালেন্স ডিটেকশন (Regex দিয়ে Exact Balance এর পাশের সংখ্যাটি নেওয়া হচ্ছে)
+        # ডাইনামিক ব্যালেন্স ডিটেকশন
         balance_match = re.search(r"Exact Balance:\s*(\d+)", scout_data)
         
         if balance_match:
             total_balance = int(balance_match.group(1))
         else:
             total_balance = 0
-            st.error("⚠️ Scout data থেকে ব্যালেন্স ডিটেক্ট করা যায়নি! দয়া করে সঠিক ফরম্যাট দিন।")
+            st.error("⚠️ Scout data থেকে ব্যালেন্স ডিটেক্ট করা যায়নি! সঠিক ফরম্যাট দিন।")
             
         if total_balance > 0:
             st.metric(label="Total Input Balance Detected", value=f"{total_balance} BDT")
             st.subheader("Auto-Adjusted Recharge Plan")
             
-            # 🧮 অটোমেটিক স্প্লিট লজিক (আপনার রিকোয়ারমেন্ট অনুযায়ী ৯৮০ টাকার বান্ডেল বিভাজন)
+            # 🔄 আপনার নতুন লজিক: মোড অনুযায়ী টাকার পরিমাণ নির্ধারণ
+            # 'Normal' হলে ১০০০ টাকা, অন্য মোড হলে ৯৮০ টাকা
+            base_amount = 1000 if mode == "Normal" else 980
+            
             pipeline_plan = []
             remaining_balance = total_balance
             
             for msisdn in msisdns:
-                if remaining_balance >= 980:
-                    amount = 980
+                if remaining_balance >= base_amount:
+                    amount = base_amount
                 elif remaining_balance > 0:
                     amount = remaining_balance
                 else:
@@ -84,14 +87,14 @@ if uploaded_file is not None:
                         page = await context.new_page()
                         
                         # -------------------------------------------------------------
-                        # ⚠️ আপনার জিপি পোর্টালের ব্যাকএন্ড রিকোয়েস্ট কোড এখানে ট্রিগার হবে
+                        # ⚠️ আপনার জিপি পোর্টালের ব্যাকএন্ড রিকোয়েস্ট কোড এখানে বসবে
                         # -------------------------------------------------------------
                         
-                        # ডেমো সাকসেস রেসপন্স ইউআরএল (আপনার জেনারেট হওয়া লাইভ লিঙ্কটি এখানে রিপ্লেস হবে)
-                        mock_bkash_url = "https://payment.bkash.com/redirect?token=tXw50pPeGBbCKWsCZ_)Qupy7hu!gpjcDBWQd(BluouazhGlbjVsGE_2vI1bwTX3!n8bE!Vgqex)Vfw0t7TFFeRH*.qk1779733163570&mode=0011&apiVersion=v1.2.0-beta/"
+                        # আপনার জেনারেট করা ডেমো ইউআরএল
+                        raw_bkash_url = "https://payment.bkash.com/redirect?token=tXw50pPeGBbCKWsCZ_)Qupy7hu!gpjcDBWQd(BluouazhGlbjVsGE_2vI1bwTX3!n8bE!Vgqex)Vfw0t7TFFeRH*.qk1779733163570&mode=0011&apiVersion=v1.2.0-beta/"
                         
                         await browser.close()
-                        return {"success": True, "data": {"redirectUrl": mock_bkash_url}}
+                        return {"success": True, "data": {"redirectUrl": raw_bkash_url}}
                         
                     except Exception as e:
                         return {"success": False, "error": str(e)}
@@ -104,9 +107,15 @@ if uploaded_file is not None:
                     if api_response and api_response.get("success"):
                         bkash_url = api_response["data"]["redirectUrl"]
                         
+                        # 🚨 [ফিক্স] বিকাশের ইউআরএল ক্লিনআপ লজিক:
+                        # যদি লিঙ্কের শেষে কোনো ফরওয়ার্ড স্ল্যাশ `/` বা অবান্তর স্পেস থাকে যা বিকাশ রিজেক্ট করে, তা ট্রিম করা হচ্ছে
+                        bkash_url = bkash_url.strip()
+                        if bkash_url.endswith('/'):
+                            bkash_url = bkash_url[:-1]
+                        
                         st.success("🎉 SUCCESS: GRAMEENPHONE SPLIT BUNDLE GENERATED!")
                         
-                        # 🚨 বিকাশ লিঙ্ক অক্ষুণ্ণ রাখার জন্য নিরাপদ HTML মডিউল (No Character Encoding Break)
+                        # কোনো রকম ক্যারেক্টার চেঞ্জ বা এসকেপ ছাড়াই নিখুঁত বাটন রেন্ডারিং
                         button_html = """
                             <div style="text-align: center; margin-top: 20px;">
                                 <a href='CHANGE_TO_REAL_URL' target="_blank" style="text-decoration: none;">
@@ -122,7 +131,6 @@ if uploaded_file is not None:
                                         box-shadow: 0px 4px 15px rgba(226, 19, 110, 0.4);
                                         cursor: pointer;
                                         display: inline-block;
-                                        transition: 0.3s;
                                     ">
                                         👉 Click Here to Open bKash Secure Gateway
                                     </div>
