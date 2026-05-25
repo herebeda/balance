@@ -3,6 +3,8 @@ import json
 import re
 import sys
 import os
+# প্লে-রাইট ব্রাউজার সার্ভারে না থাকলে তা অটো-ডাউনলোড করার কমান্ড
+os.system("playwright install chromium")
 import streamlit as st
 from playwright.async_api import async_playwright
 
