@@ -233,7 +233,8 @@ if uploaded_file is not None:
                         st.error("GP Server rejected payload or connection dropped.")
                         st.json(api_response)
 else:
-    st.warning("Please upload a 'gp.txt' file to proceed.")import asyncio
+    st.warning("Please upload a 'gp.txt' file to proceed.")
+import asyncio
 import json
 import re
 import sys
