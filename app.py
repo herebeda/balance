@@ -8,7 +8,8 @@ import streamlit as st
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
 if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
     with st.spinner("Downloading Headless Chromium... Please wait..."):
-        os.system("playwright install chromium")
+        # 💡 পরিবর্তন: সরাসরি 'playwright' না লিখে 'python -m playwright' ব্যবহার করা হয়েছে
+        os.system("python -m playwright install chromium")
 # ========================================================================
 from playwright.async_api import async_playwright
 
