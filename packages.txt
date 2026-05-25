@@ -5,6 +5,7 @@ libdrm2
 libxkbcommon0
 libxcomposite1
 libxdamage1
+libxfixes3
 libxrandr2
 libgbm1
 libpango-1.0-0
