@@ -5,14 +5,11 @@ import sys
 import os
 import streamlit as st
 
-# ==================== FORCE INSTALL PLAYWRIGHT DEPS ====================
-# ক্লাউড সার্ভারের সিস্টেম ব্রাউজার বাইনারি এবং তার সমস্ত ডিপেন্ডেন্সি ফোর্স ইনস্টল করার জন্য
+# ==================== AUTOMATIC BROWSER INSTALLATION ====================
 if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
-    with st.spinner("Configuring System Headless Chromium & Protocols... Please wait..."):
-        os.system("playwright install-deps chromium")
+    with st.spinner("Configuring System Headless Chromium... Please wait..."):
         os.system("playwright install chromium")
 # ========================================================================
-
 from playwright.async_api import async_playwright
 
 # ==================== CONFIGURATION ====================
