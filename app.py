@@ -3,21 +3,27 @@ import json
 import re
 import sys
 import os
-# প্লে-রাইট ব্রাউজার সার্ভারে না থাকলে তা অটো-ডাউনলোড করার কমান্ড
-os.system("playwright install chromium")
 import streamlit as st
+
+# ==================== AUTOMATIC BROWSER INSTALLATION ====================
+# Streamlit Cloud সার্ভারে প্লে-রাইটের ব্রাউজার না থাকলে তা অটো-ডাউনলোড করবে
+if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
+    with st.spinner("Installing Chromium Browser Components... Please wait (This happens only on first run)"):
+        os.system("playwright install chromium")
+# ========================================================================
+
 from playwright.async_api import async_playwright
 
 # ==================== CONFIGURATION ====================
-MAX_RECHARGE_LIMIT = 1000  
-MIN_RECHARGE_LIMIT = 20    
-CUSTOMER_EMAIL = "emailhere@gmail.com"  
+MAX_RECHARGE_LIMIT = 1000  # জিপি গেটওয়ের নিয়ম অনুযায়ী সর্বোচ্চ লিমিট ১০০০ টাকা
+MIN_RECHARGE_LIMIT = 20    # জিপি গেটওয়ের সর্বনিম্ন লিমিট ২০ টাকা
+CUSTOMER_EMAIL = "emailhere@gmail.com"  # আপনার আসল ইমেইলটি এখানে বসান
 # =======================================================
 
 st.set_page_config(page_title="GP Recharge Bundle System", layout="centered")
 st.title("📱 GP Recharge Bundle System")
 
-# ১. নম্বর ফাইল আপলোড অপশন (আপনার চাহিদা অনুযায়ী)
+# ১. নম্বর ফাইল আপলোড অপশন
 uploaded_file = st.file_uploader("Upload 'gp.txt' file containing numbers", type=["txt"])
 
 def parse_uploaded_numbers(file_content):
@@ -38,14 +44,17 @@ def parse_uploaded_numbers(file_content):
     return valid_numbers
 
 def parse_seu_balances(raw_input):
+    """SEU স্ক্রিপ্টের আউটপুট থেকে নম্বর এবং এক্সাক্ট ব্যালেন্স বের করার ফাংশন"""
     pattern = r"Number:\s*([0-9]+)\s*\|\s*Exact Balance:\s*([0-9]+)\s*BDT"
     matches = re.findall(pattern, raw_input)
+    
     total_balance = 0
     for _, amount in matches:
         total_balance += int(amount)
     return total_balance
 
 def distribute_amount(total_amount, target_numbers, anti_duplicate=False):
+    """প্রতিটি নম্বরে সর্বোচ্চ ১ বার (১ রাউন্ড) রিচার্জ বণ্টন করার অ্যালগরিদম"""
     distribution = []
     remaining = (total_amount // 10) * 10
     chunk_amount = 980 if anti_duplicate else MAX_RECHARGE_LIMIT
@@ -64,10 +73,21 @@ def distribute_amount(total_amount, target_numbers, anti_duplicate=False):
     return distribution, total_planned, leftover_balance
 
 async def inject_gp_live_pipeline(pipeline_plan):
-    # সার্ভারে চালানোর জন্য headless=True করা হয়েছে
+    """ক্লাউড ফ্রেন্ডলি হেডলেস ব্রাউজার আর্গুমেন্টসহ জিপি গেটওয়ে হিট করার ফাংশন"""
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True, args=['--no-sandbox', '--disable-setuid-sandbox'])
-        context = await browser.new_context()
+        # ক্লাউড সার্ভারে ক্রমিয়াম স্যান্ডবক্স বা মেমোরি ক্র্যাশ এড়ানোর জন্য সমস্ত ফ্ল্যাগ যুক্ত করা হয়েছে
+        browser = await p.chromium.launch(
+            headless=True, 
+            args=[
+                '--no-sandbox', 
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-zygote',
+                '--single-process'
+            ]
+        )
+        context = await browser.new_context(viewport={"width": 1366, "height": 768})
         page1 = await context.new_page()
         
         session_id_container = [None]
@@ -82,7 +102,8 @@ async def inject_gp_live_pipeline(pipeline_plan):
             await page1.goto("https://www.grameenphone.com/recharge", wait_until="commit", timeout=40000)
             await asyncio.sleep(4)
         except Exception as e:
-            return {"success": False, "error": f"GP Portal load fail: {str(e)}"}
+            await browser.close()
+            return {"success": False, "error": f"GP Portal load timeout: {str(e)}"}
         
         if not session_id_container[0]:
             current_url = page1.url
@@ -127,17 +148,21 @@ async def inject_gp_live_pipeline(pipeline_plan):
             }
         }
         """
-        api_response = await page1.evaluate(js_submit_routing, {"payloadStr": json.dumps(payload_data)})
+        try:
+            api_response = await page1.evaluate(js_submit_routing, {"payloadStr": json.dumps(payload_data)})
+        except Exception as e:
+            api_response = {"success": False, "error": f"JS Injection failed: {str(e)}"}
+            
         await browser.close()
         return api_response
 
-# --- UI Layout ---
+# --- UI Layout Logic ---
 if uploaded_file is not None:
     file_content = uploaded_file.read().decode("utf-8")
     target_numbers = parse_uploaded_numbers(file_content)
     st.success(f"Successfully loaded {len(target_numbers)} numbers from file.")
     
-    # মোড সিলেকশন
+    # মোড সিলেকশন রেডিও বাটন
     mode = st.radio("Choose Mode", ('Normal', '5-min Jitter (Anti-Duplicate)'))
     anti_duplicate = True if mode == '5-min Jitter (Anti-Duplicate)' else False
 
@@ -162,18 +187,16 @@ if uploaded_file is not None:
                     st.write(f"**Total Allocated:** {total_planned} BDT | **Leftover:** {leftover} BDT")
                     st.json(pipeline_plan)
                     
-                    with st.spinner("Connecting Tunnel to Grameenphone Engine... Please wait..."):
-                        # Async function রান করানো হচ্ছে
+                    with st.spinner("Connecting Tunnel to Grameenphone Engine Architecture... Please wait..."):
                         api_response = asyncio.run(inject_gp_live_pipeline(pipeline_plan))
                         
                     if api_response and api_response.get("success") and "data" in api_response and "redirectUrl" in api_response["data"]:
                         redirect_url = api_response["data"]["redirectUrl"]
                         st.balloons()
                         st.success("🎉 SUCCESS: GRAMEENPHONE SPLIT BUNDLE GENERATED!")
-                        # bKash গেটওয়ের লিংক বাটনে ক্লিক করে ইউজার পেমেন্ট করবে
-                        st.video("https://assets.mixkit.co/videos/preview/mixkit-animation-of-a-smartphone-with-a-checkmark-43224-large.mp4") # Just generic visual success
-                        st.markdown(f'[👉 Click Here to Open bKash Secure Gateway]({redirect_url})')
+                        st.markdown(f'### [👉 Click Here to Open bKash Secure Gateway]({redirect_url})')
                     else:
-                        st.error(f"GP Server rejected payload or failed. Response: {api_response}")
+                        st.error("GP Server rejected payload or failed.")
+                        st.json(api_response)
 else:
     st.warning("Please upload a 'gp.txt' file to proceed.")
