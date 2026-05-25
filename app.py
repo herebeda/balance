@@ -10,12 +10,14 @@ import streamlit as st
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
 @st.cache_resource
 def initialize_playwright_browser():
+    # প্রথমে ক্লাউড লিনাক্স সিস্টেমের জন্য প্রয়োজনীয় ডিপেন্ডেন্সি ইনস্টল করবে
+    os.system(f"{sys.executable} -m playwright install-deps")
+    # তারপর ক্রোমিয়াম ব্রাউজার ইনস্টল করবে
     os.system(f"{sys.executable} -m playwright install chromium")
     return True
 
 initialize_playwright_browser()
 # ========================================================================
-
 from playwright.async_api import async_playwright
 
 # Try importing ReportLab for PDF generation
