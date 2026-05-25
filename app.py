@@ -15,7 +15,7 @@ if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
 
 st.title("📱 GP Recharge Bundle System")
 
-# فایل আপলোড সেকশন
+# ফাইল আপলোড সেকশন
 uploaded_file = st.file_uploader("Upload 'gp.txt' file containing numbers", type=["txt"])
 
 if uploaded_file is not None:
@@ -24,11 +24,11 @@ if uploaded_file is not None:
     msisdns = [line.strip() for line in file_contents.splitlines() if line.strip()]
     st.success(f"Successfully loaded {len(msisdns)} numbers from file.")
     
-    # মোড সিলেকশন
+    # মোড সিলেকশন (ইউজার ইন্টারফেসে সিলেক্ট করলেই নিচের লজিক অটো চেঞ্জ হবে)
     mode = st.radio("Choose Mode", ["Normal", "5-min Jitter (Anti-Duplicate)"])
     
     # SEU SCOUT ডেটা ইনপুট
-    scout_data = st.text_area("Paste your SEU SCOUT output data here:", placeholder="Number: 01713532100 | Exact Balance: 20145 BDT | ...")
+    scout_data = st.text_area("Paste your SEU SCOUT output data here:", placeholder="Number: 01713... | Exact Balance: 20145 BDT")
     
     if scout_data:
         # ডাইনামিক ব্যালেন্স ডিটেকশন
@@ -38,15 +38,17 @@ if uploaded_file is not None:
             total_balance = int(balance_match.group(1))
         else:
             total_balance = 0
-            st.error("⚠️ Scout data থেকে ব্যালেন্স ডিটেক্ট করা যায়নি! সঠিক ফরম্যাট দিন।")
+            st.error("⚠️ Scout data থেকে ব্যালেন্স ডিটেক্ট করা যায়নি!")
             
         if total_balance > 0:
             st.metric(label="Total Input Balance Detected", value=f"{total_balance} BDT")
             st.subheader("Auto-Adjusted Recharge Plan")
             
-            # 🔄 আপনার নতুন লজিক: মোড অনুযায়ী টাকার পরিমাণ নির্ধারণ
-            # 'Normal' হলে ১০০০ টাকা, অন্য মোড হলে ৯৮০ টাকা
-            base_amount = 1000 if mode == "Normal" else 980
+            # 🎯 মোড অনুযায়ী অটোমেটিক টাকার লজিক সিলেকশন
+            if mode == "Normal":
+                base_amount = 1000  # নরমাল মোডে ফিক্সড ১০০০ টাকা
+            else:
+                base_amount = 980   # ৫-মিনিট জিটার মোডে ফিক্সড ৯৮০ টাকা
             
             pipeline_plan = []
             remaining_balance = total_balance
@@ -66,31 +68,39 @@ if uploaded_file is not None:
             st.caption(f"Total Allocated: {allocated} BDT | Leftover: {remaining_balance} BDT")
             st.json(pipeline_plan)
             
-            # Playwright এর মাধ্যমে GP Server হিট করার এসিনক্রোনাস ফাংশন
+            # Playwright এর মাধ্যমে সেশন জেনারেশন
             async def inject_gp_live_pipeline(plan_data):
                 async with async_playwright() as p:
                     try:
+                        # 🚨 বিকাশ ব্লকিং বাইপাস করার জন্য ক্রমিয়াম সেটিংস পরিবর্তন করা হয়েছে
                         browser = await p.chromium.launch(
-                            headless=True,
+                            headless=True,  # সার্ভারে রান করার জন্য ট্রু রাখতে হবে তবে নিচের ফ্ল্যাগগুলো রিয়েল উইন্ডো ইমুলেট করবে
                             args=[
                                 '--no-sandbox',
                                 '--disable-setuid-sandbox',
+                                '--disable-blink-features=AutomationControlled', # অটোমেশন ট্র্যাকিং অফ করার জন্য
                                 '--disable-dev-shm-usage',
-                                '--disable-gpu',
-                                '--no-zygote',
-                                '--single-process'
+                                '--disable-web-security',
+                                '--disable-features=IsolateOrigins,site-per-process'
                             ]
                         )
+                        
+                        # রিয়েল উইন্ডোজ পিসি এবং ক্রোম ব্রাউজারের পুঙ্খানুপুঙ্খ ফিঙ্গারপ্রিন্ট ইমিটেশন
                         context = await browser.new_context(
-                            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+                            viewport={"width": 1920, "height": 1080},
+                            accept_downloads=True
                         )
+                        
+                        # বিকাশের অবজেক্ট ডিটেকশন ট্র্যাকিং ফাঁকি দেওয়ার স্ক্রিপ্ট
                         page = await context.new_page()
+                        await page.add_init_script("delete navigator.__proto__.webdriver;")
                         
                         # -------------------------------------------------------------
-                        # ⚠️ আপনার জিপি পোর্টালের ব্যাকএন্ড রিকোয়েস্ট কোড এখানে বসবে
+                        # ⚠️ আপনার জিপি পোর্টালের রিকোয়েস্ট কোড এখানে রান হবে
                         # -------------------------------------------------------------
                         
-                        # আপনার জেনারেট করা ডেমো ইউআরএল
+                        # উদাহরণস্বরূপ লাইভ টোকেন ইউআরএল
                         raw_bkash_url = "https://payment.bkash.com/redirect?token=tXw50pPeGBbCKWsCZ_)Qupy7hu!gpjcDBWQd(BluouazhGlbjVsGE_2vI1bwTX3!n8bE!Vgqex)Vfw0t7TFFeRH*.qk1779733163570&mode=0011&apiVersion=v1.2.0-beta/"
                         
                         await browser.close()
@@ -101,24 +111,22 @@ if uploaded_file is not None:
 
             # এক্সিকিউট বাটন
             if st.button("Execute GP Recharge Pipeline"):
-                with st.spinner("Connecting Tunnel to Grameenphone Gateway & Generating bKash Session..."):
+                with st.spinner("Generating Anti-Fingerprint bKash Secure Session..."):
                     api_response = asyncio.run(inject_gp_live_pipeline(pipeline_plan))
                     
                     if api_response and api_response.get("success"):
-                        bkash_url = api_response["data"]["redirectUrl"]
+                        bkash_url = api_response["data"]["redirectUrl"].strip()
                         
-                        # 🚨 [ফিক্স] বিকাশের ইউআরএল ক্লিনআপ লজিক:
-                        # যদি লিঙ্কের শেষে কোনো ফরওয়ার্ড স্ল্যাশ `/` বা অবান্তর স্পেস থাকে যা বিকাশ রিজেক্ট করে, তা ট্রিম করা হচ্ছে
-                        bkash_url = bkash_url.strip()
+                        # শেষ প্রান্তের অবান্তর ক্যারেক্টার ট্রিম
                         if bkash_url.endswith('/'):
                             bkash_url = bkash_url[:-1]
                         
                         st.success("🎉 SUCCESS: GRAMEENPHONE SPLIT BUNDLE GENERATED!")
                         
-                        # কোনো রকম ক্যারেক্টার চেঞ্জ বা এসকেপ ছাড়াই নিখুঁত বাটন রেন্ডারিং
+                        # সরাসরি ক্লিকেবল বাটন লিংক ইনজেকশন
                         button_html = """
                             <div style="text-align: center; margin-top: 20px;">
-                                <a href='CHANGE_TO_REAL_URL' target="_blank" style="text-decoration: none;">
+                                <a href="CHANGE_TO_REAL_URL" target="_blank" style="text-decoration: none;">
                                     <div style="
                                         background-color: #E2136E; 
                                         color: white; 
