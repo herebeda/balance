@@ -3,6 +3,8 @@ import sys
 import asyncio
 import json
 import re
+import io
+from datetime import datetime
 import streamlit as st
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
@@ -16,23 +18,51 @@ initialize_playwright_browser()
 
 from playwright.async_api import async_playwright
 
-# ==================== CONFIGURATION ====================
+# Try importing ReportLab for PDF generation
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+except ImportError:
+    os.system(f"{sys.executable} -m pip install reportlab")
+    from reportlab.lib.pagesizes import letter
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+
+# ==================== CONFIGURATION & PERSISTENCE ====================
 MAX_RECHARGE_LIMIT = 1000  
 MIN_RECHARGE_LIMIT = 20    
-# =======================================================
+HISTORY_FILE = "recharge_history.json"
+
+def load_history():
+    if os.path.exists(HISTORY_FILE):
+        try:
+            with open(HISTORY_FILE, "r") as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_history(history_data):
+    with open(HISTORY_FILE, "w") as f:
+        json.dump(history_data, f, indent=4)
+
+# Initialize Session State History
+if "history" not in st.session_state:
+    st.session_state.history = load_history()
+# =======================================================================
 
 # --- PREMIUM UI CUSTOM CSS INJECTION ---
 st.set_page_config(page_title="GP Recharge Bundle System", page_icon="📱", layout="centered")
 
 st.markdown("""
     <style>
-        /* Main Background & Font Tweak */
         .main {
             background-color: #0e1117;
             font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
         }
-        
-        /* Modern Card Layout for inputs */
         div.stForm, div[data-testid="stBlock"] {
             background: rgba(255, 255, 255, 0.03);
             border-radius: 12px;
@@ -41,21 +71,12 @@ st.markdown("""
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
             backdrop-filter: blur(5px);
         }
-        
-        /* macOS Style Inputs */
         .stTextInput>div>div>input, .stTextArea>div>div>textarea {
             background-color: rgba(255, 255, 255, 0.05) !important;
             color: #ffffff !important;
             border: 1px solid rgba(255, 255, 255, 0.1) !important;
             border-radius: 8px !important;
-            transition: all 0.3s ease-in-out;
         }
-        .stTextInput>div>div>input:focus, .stTextArea>div>div>textarea:focus {
-            border-color: #007aff !important;
-            box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25) !important;
-        }
-        
-        /* Process Button Custom Styling */
         .stButton>button {
             width: 100%;
             background: linear-gradient(135deg, #007aff, #0051a8);
@@ -64,17 +85,8 @@ st.markdown("""
             padding: 12px 24px;
             border-radius: 8px;
             font-weight: 600;
-            letter-spacing: 0.5px;
-            transition: all 0.3s ease;
             box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
         }
-        .stButton>button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 122, 255, 0.5);
-            background: linear-gradient(135deg, #0088ff, #0066cc);
-        }
-        
-        /* Title Header Animation */
         .ui-title {
             text-align: center;
             background: linear-gradient(45deg, #007aff, #34c759, #ffcc00);
@@ -83,8 +95,6 @@ st.markdown("""
             font-weight: 800;
             margin-bottom: 25px;
         }
-
-        /* 👑 bKash Premium Animated Button Keyframes */
         @keyframes bkash-pulse {
             0% { box-shadow: 0 0 0 0 rgba(226, 19, 110, 0.7); }
             70% { box-shadow: 0 0 0 18px rgba(226, 19, 110, 0); }
@@ -95,8 +105,6 @@ st.markdown("""
             50% { background-position: 100% 50%; }
             100% { background-position: 0% 50%; }
         }
-
-        /* Animated Button Class */
         .premium-bkash-btn {
             background: linear-gradient(-45deg, #E2136E, #F81F8F, #C30B5C, #E2136E);
             background-size: 300% 300%;
@@ -107,24 +115,41 @@ st.markdown("""
             border-radius: 12px;
             font-size: 19px;
             font-weight: bold;
-            font-family: 'Arial', sans-serif;
             cursor: pointer;
             display: inline-block;
             text-decoration: none;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
         .premium-bkash-btn:hover {
-            transform: scale(1.06) translateY(-3px);
-            filter: brightness(1.1);
+            transform: scale(1.04);
         }
     </style>
 """, unsafe_allow_html=True)
 
 st.markdown("<h1 class='ui-title'>📱 GP Recharge Bundle Engine</h1>", unsafe_allow_html=True)
 
-uploaded_file = st.file_uploader("Upload 'gp.txt' file containing numbers", type=["txt"])
+# ==================== DUAL INPUT INTERFACE (TABS) ====================
+st.write("### 📥 Target Numbers Input Source")
+tab1, tab2 = st.tabs(["📁 Upload 'gp.txt' File", "✍️ Paste Numbers Manually"])
 
+raw_numbers_content = ""
+
+with tab1:
+    uploaded_file = st.file_uploader("Upload text file containing numbers", type=["txt"], key="gp_file_uploader")
+    if uploaded_file is not None:
+        raw_numbers_content = uploaded_file.read().decode("utf-8")
+
+with tab2:
+    pasted_numbers = st.text_area(
+        "Paste your numbers here (Separated by space, comma, or new line):", 
+        height=130, 
+        placeholder="01711XXXXXX\n01301XXXXXX",
+        key="gp_text_paster"
+    )
+    if pasted_numbers.strip():
+        raw_numbers_content = pasted_numbers
+
+# ==================== HELPERS & CORE LOGIC ====================
 def parse_uploaded_numbers(file_content):
     raw_tokens = re.split(r'[\s,;\t\n\r]+', file_content)
     valid_numbers = []
@@ -167,25 +192,78 @@ def distribute_amount(total_amount, target_numbers, anti_duplicate=False):
     leftover_balance = total_amount - total_planned
     return distribution, total_planned, leftover_balance
 
+# Beautiful PDF Generation Engine using ReportLab
+def generate_pdf_report(session_data):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    story = []
+    
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'DocTitle',
+        parent=styles['Heading1'],
+        fontSize=22,
+        textColor=colors.HexColor("#E2136E"),
+        spaceAfter=15,
+        alignment=1 # Centered
+    )
+    meta_style = ParagraphStyle(
+        'MetaStyle',
+        parent=styles['Normal'],
+        fontSize=11,
+        textColor=colors.HexColor("#333333"),
+        spaceAfter=6
+    )
+    
+    # Title & Header
+    story.append(Paragraph("<b>GP RECHARGE BUNDLE SYSTEM</b>", title_style))
+    story.append(Paragraph("<b>Official Transaction Summary Report</b>", ParagraphStyle('Sub', parent=title_style, fontSize=13, textColor=colors.HexColor("#555555"), spaceAfter=20)))
+    story.append(Spacer(1, 10))
+    
+    # Metadata Overview Block
+    story.append(Paragraph(f"<b>Date & Time:</b> {session_data['timestamp']}", meta_style))
+    story.append(Paragraph(f"<b>Total Processed Amount:</b> {session_data['total_amount']} BDT", meta_style))
+    story.append(Paragraph(f"<b>Total Target Numbers:</b> {session_data['total_numbers']}", meta_style))
+    story.append(Spacer(1, 20))
+    
+    # Table Construction
+    table_data = [["SL", "Phone Number", "Allocated Amount (BDT)"]]
+    for idx, item in enumerate(session_data['breakdown'], 1):
+        table_data.append([str(idx), item['msisdn'], f"{item['amount']} BDT"])
+        
+    t = Table(table_data, colWidths=[50, 250, 200])
+    t.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#E2136E")),
+        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,0), 11),
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        ('TOPPADDING', (0,0), (-1,0), 8),
+        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F9F9F9")),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
+        ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,1), (-1,-1), 10),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F2F4F7")]),
+        ('BOTTOMPADDING', (0,1), (-1,-1), 6),
+        ('TOPPADDING', (0,1), (-1,-1), 6),
+    ]))
+    
+    story.append(t)
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
 async def inject_gp_live_pipeline(pipeline_plan, customer_email):
     async with async_playwright() as p:
         try:
             browser = await p.chromium.launch(
                 headless=True,
-                args=[
-                    '--no-sandbox',
-                    '--disable-setuid-sandbox',
-                    '--disable-blink-features=AutomationControlled',
-                    '--disable-dev-shm-usage',
-                    '--disable-gpu',
-                    '--no-zygote',
-                    '--single-process',
-                    '--ignore-certificate-errors'
-                ]
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
             )
             context = await browser.new_context(
                 viewport={"width": 1366, "height": 768},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             )
             page1 = await context.new_page()
             await page1.add_init_script("delete navigator.__proto__.webdriver;")
@@ -196,13 +274,12 @@ async def inject_gp_live_pipeline(pipeline_plan, customer_email):
         async def handle_response(response):
             if "payments.grameenphone.com/ui/recharge/" in response.url:
                 match = re.search(r'/ui/recharge/([a-f0-9]{32})', response.url)
-                if match:
-                    session_id_container[0] = match.group(1)
+                if match: session_id_container[0] = match.group(1)
 
         page1.on("response", handle_response)
         try:
             await page1.goto("https://www.grameenphone.com/recharge", wait_until="domcontentloaded", timeout=50000)
-            await asyncio.sleep(5)
+            await asyncio.sleep(4)
         except Exception as e:
             await browser.close()
             return {"success": False, "error": f"GP Portal connection timeout: {str(e)}"}
@@ -210,8 +287,7 @@ async def inject_gp_live_pipeline(pipeline_plan, customer_email):
         if not session_id_container[0]:
             current_url = page1.url
             match = re.search(r'/recharge/([a-f0-9]{32})', current_url)
-            if match:
-                session_id_container[0] = match.group(1)
+            if match: session_id_container[0] = match.group(1)
             else:
                 await browser.close()
                 return {"success": False, "error": "Could not intercept GP Gateway Session ID."}
@@ -225,12 +301,7 @@ async def inject_gp_live_pipeline(pipeline_plan, customer_email):
             "customerEmail": customer_email,
             "products": products_list,
             "language": "en",
-            "ui": "bulk_recharge",
-            "campaign_code": "",
-            "campaign_payment_method": "bkash",
-            "channel_campaign_codes": "",
-            "identifier": "",
-            "agreementType": 0
+            "ui": "bulk_recharge"
         }
 
         js_submit_routing = """
@@ -238,16 +309,11 @@ async def inject_gp_live_pipeline(pipeline_plan, customer_email):
             try {
                 const response = await fetch('https://payments.grameenphone.com/ui/api/submit-routing', {
                     method: 'POST',
-                    headers: {
-                        'Accept': 'application/json, text/plain, */*',
-                        'Content-Type': 'application/json'
-                    },
+                    headers: {'Accept': 'application/json, text/plain, */*', 'Content-Type': 'application/json'},
                     body: config.payloadStr
                 });
                 return await response.json();
-            } catch (err) {
-                return {"success": false, "error": err.toString()};
-            }
+            } catch (err) { return {"success": false, "error": err.toString()}; }
         }
         """
         try:
@@ -258,68 +324,134 @@ async def inject_gp_live_pipeline(pipeline_plan, customer_email):
         await browser.close()
         return api_response
 
-# --- UI Layout Logic ---
-if uploaded_file is not None:
-    file_content = uploaded_file.read().decode("utf-8")
-    target_numbers = parse_uploaded_numbers(file_content)
-    st.success(f"📦 Successfully loaded {len(target_numbers)} numbers from file.")
+# --- UI Execution Template ---
+if raw_numbers_content.strip():
+    target_numbers = parse_uploaded_numbers(raw_numbers_content)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        mode = st.radio("🚀 Choose Mode", ['Normal', '5-min Jitter (Anti-Duplicate)'])
-        anti_duplicate = True if mode == '5-min Jitter (Anti-Duplicate)' else False
-    with col2:
-        customer_email_input = st.text_input("📧 Customer Email Address:", value="emailhere@gmail.com")
+    if not target_numbers:
+        st.error("❌ No valid 11-digit numbers extracted.")
+    else:
+        st.success(f"📦 Loaded {len(target_numbers)} numbers.")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            mode = st.radio("🚀 Choose Mode", ['Normal', '5-min Jitter (Anti-Duplicate)'])
+            anti_duplicate = True if mode == '5-min Jitter (Anti-Duplicate)' else False
+        with col2:
+            customer_email_input = st.text_input("📧 Customer Email Address:", value="emailhere@gmail.com")
 
-    seu_input = st.text_area("📋 Paste your SEU SCOUT output data here:", height=150)
+        seu_input = st.text_area("📋 Paste your SEU SCOUT output data here:", height=150)
 
-    if st.button("⚡ Process & Generate Recharge Link"):
-        if not seu_input.strip():
-            st.error("Please paste SEU output data first.")
-        elif not customer_email_input.strip():
-            st.error("Please provide a valid email address.")
-        else:
-            total_exact_balance = parse_seu_balances(seu_input)
-            if total_exact_balance == 0:
-                st.error("Could not extract any valid Exact Balance.")
+        if st.button("⚡ Process & Generate Recharge Link"):
+            if not seu_input.strip():
+                st.error("Please paste SEU output data first.")
             else:
-                st.metric(label="💰 Total Input Balance Detected", value=f"{total_exact_balance} BDT")
-                pipeline_plan, total_planned, leftover = distribute_amount(total_exact_balance, target_numbers, anti_duplicate)
-                
-                if not pipeline_plan:
-                    st.error("No valid round recharge plan could be generated.")
+                total_exact_balance = parse_seu_balances(seu_input)
+                if total_exact_balance == 0:
+                    st.error("Could not extract any valid Exact Balance.")
                 else:
-                    st.subheader("📊 Auto-Adjusted Recharge Plan")
-                    st.write(f"**Total Allocated:** `{total_planned} BDT` | **Leftover:** `{leftover} BDT`")
-                    st.json(pipeline_plan)
+                    st.metric(label="💰 Total Input Balance Detected", value=f"{total_exact_balance} BDT")
+                    pipeline_plan, total_planned, leftover = distribute_amount(total_exact_balance, target_numbers, anti_duplicate)
                     
-                    with st.spinner("Connecting Secure Tunnel to Grameenphone Engine Architecture..."):
-                        api_response = asyncio.run(inject_gp_live_pipeline(pipeline_plan, customer_email_input.strip()))
-                        
-                    if api_response and api_response.get("success") and "data" in api_response and "redirectUrl" in api_response["data"]:
-                        raw_url = api_response["data"]["redirectUrl"].strip()
-                        
-                        if raw_url.endswith('/'):
-                            raw_url = raw_url[:-1]
-                        
-                        st.balloons()
-                        st.success("🎉 SUCCESS: GRAMEENPHONE SPLIT BUNDLE GENERATED!")
-                        
-                        st.info("💡 বাটন কাজ না করলে নিচের বক্স থেকে লিঙ্কটি দ্রুত কপি করে ব্রাউজারে পেস্ট করুন:")
-                        st.text_area("🔗 bKash URL Backup Link", value=raw_url, height=70)
-                        
-                        # ✨ সুপার অ্যানিমেটেড প্রিমিয়াম বিকাশ বাটন (Gradient Wave + Pulsing Glow Effect)
-                        button_html = """
-                            <div style="text-align: center; margin-top: 25px; margin-bottom: 25px;">
-                                <a href='CHANGE_TO_REAL_URL' target="_blank" class="premium-bkash-btn">
-                                    🌸 Click Here to Open bKash Secure Gateway
-                                </a>
-                            </div>
-                        """.replace("CHANGE_TO_REAL_URL", raw_url)
-                        
-                        st.markdown(button_html, unsafe_allow_html=True)
+                    if not pipeline_plan:
+                        st.error("No valid plan generated.")
                     else:
-                        st.error("GP Server rejected payload or connection dropped.")
-                        st.json(api_response)
+                        st.subheader("📊 Auto-Adjusted Plan")
+                        st.write(f"**Total Allocated:** `{total_planned} BDT` | **Leftover:** `{leftover} BDT`")
+                        st.json(pipeline_plan)
+                        
+                        with st.spinner("Connecting Secure Tunnel to Grameenphone Engine Architecture..."):
+                            api_response = asyncio.run(inject_gp_live_pipeline(pipeline_plan, customer_email_input.strip()))
+                            
+                        if api_response and api_response.get("success") and "data" in api_response and "redirectUrl" in api_response["data"]:
+                            raw_url = api_response["data"]["redirectUrl"].strip()
+                            if raw_url.endswith('/'): raw_url = raw_url[:-1]
+                            
+                            st.balloons()
+                            st.success("🎉 SUCCESS: LINK GENERATED!")
+                            
+                            st.text_area("🔗 bKash URL Backup Link", value=raw_url, height=70)
+                            
+                            button_html = f"""
+                                <div style="text-align: center; margin-top: 25px; margin-bottom: 25px;">
+                                    <a href='{raw_url}' target="_blank" class="premium-bkash-btn">
+                                        🌸 Click Here to Open bKash Secure Gateway
+                                    </a>
+                                </div>
+                            """
+                            st.markdown(button_html, unsafe_allow_html=True)
+                            
+                            # 💾 Save Successful Session to Persistent History
+                            new_log = {
+                                "timestamp": datetime.now().strftime("%Y-%m-%d %I:%M:%S %p"),
+                                "total_amount": total_planned,
+                                "total_numbers": len(pipeline_plan),
+                                "breakdown": pipeline_plan
+                            }
+                            st.session_state.history.insert(0, new_log)
+                            save_history(st.session_state.history)
+                        else:
+                            st.error("GP Server rejected payload.")
+                            st.json(api_response)
 else:
-    st.info("💡 Getting Started: Please upload a 'gp.txt' file to unlock the system core.")
+    st.info("💡 Getting Started: Please upload a file OR paste numbers to unlock the system.")
+
+# ==================== 📊 LIVE RECHARGE HISTORY & ANALYTICS ====================
+st.write("---")
+st.write("## 📊 Persistent Recharge Logs & Analytics")
+
+if st.session_state.history:
+    # 🌟 Calculate All-Time High-Level Analytics
+    num_frequency = {}
+    num_amount = {}
+    total_spent_overall = 0
+    
+    for session in st.session_state.history:
+        total_spent_overall += session["total_amount"]
+        for entry in session["breakdown"]:
+            msisdn = entry["msisdn"]
+            num_frequency[msisdn] = num_frequency.get(msisdn, 0) + 1
+            num_amount[msisdn] = num_amount.get(msisdn, 0) + entry["amount"]
+            
+    # Top Metrics Display
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Total Volume Processed", f"{total_spent_overall} BDT")
+    m2.metric("Unique Target Numbers", f"{len(num_frequency)}")
+    m3.metric("Total Successful Batches", f"{len(st.session_state.history)}")
+
+    # Summary Analytics Table
+    st.write("### 🎯 Aggregated Target Numbers Summary")
+    summary_table = []
+    for num in num_frequency:
+        summary_table.append({
+            "Phone Number": num,
+            "Recharge Frequency": f"{num_frequency[num]} Times",
+            "Total Amount Distributed": f"{num_amount[num]} BDT"
+        })
+    st.table(summary_table)
+
+    # 🔍 Show More Expander for Session Logs & PDF Download
+    with st.expander("🔍 Show More (Detailed Session Logs & PDF Generation)"):
+        st.write("### 📂 Individual Session Logs")
+        
+        for i, session in enumerate(st.session_state.history):
+            st.markdown(f"#### 📅 Session {i+1}: {session['timestamp']}")
+            
+            c1, c2 = st.columns(2)
+            c1.write(f"**Total Dispatched:** `{session['total_amount']} BDT`")
+            c2.write(f"**Total Numbers:** `{session['total_numbers']}`")
+            
+            # Generate ReportLab PDF Buffer dynamically
+            pdf_data = generate_pdf_report(session)
+            
+            # Premium Styled Download Button
+            st.download_button(
+                label=f"📥 Download PDF Report ({session['timestamp']})",
+                data=pdf_data,
+                file_name=f"Recharge_Report_{session['timestamp'].replace(':', '-').replace(' ', '_')}.pdf",
+                mime="application/pdf",
+                key=f"pdf_btn_{i}"
+            )
+            st.write("---")
+else:
+    st.info("No transaction records found. Successfully executed pipelines will generate logs here.")
