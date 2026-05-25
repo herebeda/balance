@@ -6,8 +6,11 @@ import os
 import streamlit as st
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
+# ক্লাউড সার্ভারে প্রথম রান করার সময় প্লে-রাইটের নিজস্ব ড্রাইভার ও ব্রাউজার সেটআপ করবে
 if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
-    with st.spinner("Configuring System Headless Chromium... Please wait..."):
+    with st.spinner("Configuring System Headless Chromium & OS Libraries... Please wait..."):
+        # এটি ওএস-এর মিসিং গ্লিব বা অন্যান্য দরকারি প্যাকেজ নিজেই কনফিগার করে নেবে
+        os.system("playwright install-deps chromium")
         os.system("playwright install chromium")
 # ========================================================================
 
