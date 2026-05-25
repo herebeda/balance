@@ -5,29 +5,28 @@ import sys
 import os
 import streamlit as st
 
-# ==================== AUTOMATIC BROWSER INSTALLATION ====================
-# Streamlit Cloud সার্ভারে প্লে-রাইটের ব্রাউজার না থাকলে তা অটো-ডাউনলোড করবে
+# ==================== FORCE INSTALL PLAYWRIGHT DEPS ====================
+# ক্লাউড সার্ভারের সিস্টেম ব্রাউজার বাইনারি এবং তার সমস্ত ডিপেন্ডেন্সি ফোর্স ইনস্টল করার জন্য
 if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
-    with st.spinner("Installing Chromium Browser Components... Please wait (This happens only on first run)"):
+    with st.spinner("Configuring System Headless Chromium & Protocols... Please wait..."):
+        os.system("playwright install-deps chromium")
         os.system("playwright install chromium")
 # ========================================================================
 
 from playwright.async_api import async_playwright
 
 # ==================== CONFIGURATION ====================
-MAX_RECHARGE_LIMIT = 1000  # জিপি গেটওয়ের নিয়ম অনুযায়ী সর্বোচ্চ লিমিট ১০০০ টাকা
-MIN_RECHARGE_LIMIT = 20    # জিপি গেটওয়ের সর্বনিম্ন লিমিট ২০ টাকা
-CUSTOMER_EMAIL = "emailhere@gmail.com"  # আপনার আসল ইমেইলটি এখানে বসান
+MAX_RECHARGE_LIMIT = 1000  
+MIN_RECHARGE_LIMIT = 20    
+CUSTOMER_EMAIL = "emailhere@gmail.com"  
 # =======================================================
 
 st.set_page_config(page_title="GP Recharge Bundle System", layout="centered")
 st.title("📱 GP Recharge Bundle System")
 
-# ১. নম্বর ফাইল আপলোড অপশন
 uploaded_file = st.file_uploader("Upload 'gp.txt' file containing numbers", type=["txt"])
 
 def parse_uploaded_numbers(file_content):
-    """আপলোড করা ফাইল থেকে নম্বর ফিল্টার করার ফাংশন"""
     raw_tokens = re.split(r'[\s,;\t\n\r]+', file_content)
     valid_numbers = []
     for token in raw_tokens:
@@ -44,17 +43,14 @@ def parse_uploaded_numbers(file_content):
     return valid_numbers
 
 def parse_seu_balances(raw_input):
-    """SEU স্ক্রিপ্টের আউটপুট থেকে নম্বর এবং এক্সাক্ট ব্যালেন্স বের করার ফাংশন"""
     pattern = r"Number:\s*([0-9]+)\s*\|\s*Exact Balance:\s*([0-9]+)\s*BDT"
     matches = re.findall(pattern, raw_input)
-    
     total_balance = 0
     for _, amount in matches:
         total_balance += int(amount)
     return total_balance
 
 def distribute_amount(total_amount, target_numbers, anti_duplicate=False):
-    """প্রতিটি নম্বরে সর্বোচ্চ ১ বার (১ রাউন্ড) রিচার্জ বণ্টন করার অ্যালগরিদম"""
     distribution = []
     remaining = (total_amount // 10) * 10
     chunk_amount = 980 if anti_duplicate else MAX_RECHARGE_LIMIT
@@ -73,22 +69,29 @@ def distribute_amount(total_amount, target_numbers, anti_duplicate=False):
     return distribution, total_planned, leftover_balance
 
 async def inject_gp_live_pipeline(pipeline_plan):
-    """ক্লাউড ফ্রেন্ডলি হেডলেস ব্রাউজার আর্গুমেন্টসহ জিপি গেটওয়ে হিট করার ফাংশন"""
     async with async_playwright() as p:
-        # ক্লাউড সার্ভারে ক্রমিয়াম স্যান্ডবক্স বা মেমোরি ক্র্যাশ এড়ানোর জন্য সমস্ত ফ্ল্যাগ যুক্ত করা হয়েছে
-        browser = await p.chromium.launch(
-            headless=True, 
-            args=[
-                '--no-sandbox', 
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-gpu',
-                '--no-zygote',
-                '--single-process'
-            ]
-        )
-        context = await browser.new_context(viewport={"width": 1366, "height": 768})
-        page1 = await context.new_page()
+        try:
+            # চরম হেডলেস এনভায়রনমেন্ট ফ্রেন্ডলি আর্গুমেন্ট সেট
+            browser = await p.chromium.launch(
+                headless=True,
+                args=[
+                    '--no-sandbox',
+                    '--disable-setuid-sandbox',
+                    '--disable-dev-shm-usage',
+                    '--disable-gpu',
+                    '--no-zygote',
+                    '--single-process',
+                    '--ignore-certificate-errors'
+                ]
+            )
+            # নেটওয়ার্ক এবং জিপি পোর্টালে রিকোয়েস্ট ব্লক এড়াতে ফেইক ইউজার এজেন্ট ব্যবহার করা হয়েছে
+            context = await browser.new_context(
+                viewport={"width": 1366, "height": 768},
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+            page1 = await context.new_page()
+        except Exception as e:
+            return {"success": False, "error": f"Browser/Context Initialization Failed: {str(e)}"}
         
         session_id_container = [None]
         async def handle_response(response):
@@ -99,11 +102,12 @@ async def inject_gp_live_pipeline(pipeline_plan):
 
         page1.on("response", handle_response)
         try:
-            await page1.goto("https://www.grameenphone.com/recharge", wait_until="commit", timeout=40000)
-            await asyncio.sleep(4)
+            # ক্লাউডে অনেক সময় টাইমআউট ইগনোর করতে 'domcontentloaded' ওয়েট স্টেট দেওয়া হলো
+            await page1.goto("https://www.grameenphone.com/recharge", wait_until="domcontentloaded", timeout=50000)
+            await asyncio.sleep(5)
         except Exception as e:
             await browser.close()
-            return {"success": False, "error": f"GP Portal load timeout: {str(e)}"}
+            return {"success": False, "error": f"GP Portal connection timeout on Cloud Server: {str(e)}"}
         
         if not session_id_container[0]:
             current_url = page1.url
@@ -112,7 +116,7 @@ async def inject_gp_live_pipeline(pipeline_plan):
                 session_id_container[0] = match.group(1)
             else:
                 await browser.close()
-                return {"success": False, "error": "Could not intercept GP Gateway Session ID."}
+                return {"success": False, "error": "Could not intercept GP Gateway Session ID. Gateway might be blocking automated cloud IPs."}
 
         session_id = session_id_container[0]
         products_list = [{"type": "postpaid", "msisdn": item["msisdn"], "amount": item["amount"]} for item in pipeline_plan]
@@ -162,11 +166,9 @@ if uploaded_file is not None:
     target_numbers = parse_uploaded_numbers(file_content)
     st.success(f"Successfully loaded {len(target_numbers)} numbers from file.")
     
-    # মোড সিলেকশন রেডিও বাটন
     mode = st.radio("Choose Mode", ('Normal', '5-min Jitter (Anti-Duplicate)'))
     anti_duplicate = True if mode == '5-min Jitter (Anti-Duplicate)' else False
 
-    # SEU ডাটা ইনপুট এরিয়া
     seu_input = st.text_area("Paste your SEU SCOUT output data here:", height=150)
 
     if st.button("Process & Generate Recharge Link"):
@@ -187,7 +189,7 @@ if uploaded_file is not None:
                     st.write(f"**Total Allocated:** {total_planned} BDT | **Leftover:** {leftover} BDT")
                     st.json(pipeline_plan)
                     
-                    with st.spinner("Connecting Tunnel to Grameenphone Engine Architecture... Please wait..."):
+                    with st.spinner("Connecting Secure Tunnel to Grameenphone Engine Architecture..."):
                         api_response = asyncio.run(inject_gp_live_pipeline(pipeline_plan))
                         
                     if api_response and api_response.get("success") and "data" in api_response and "redirectUrl" in api_response["data"]:
@@ -196,7 +198,7 @@ if uploaded_file is not None:
                         st.success("🎉 SUCCESS: GRAMEENPHONE SPLIT BUNDLE GENERATED!")
                         st.markdown(f'### [👉 Click Here to Open bKash Secure Gateway]({redirect_url})')
                     else:
-                        st.error("GP Server rejected payload or failed.")
+                        st.error("GP Server rejected payload or connection dropped.")
                         st.json(api_response)
 else:
     st.warning("Please upload a 'gp.txt' file to proceed.")
