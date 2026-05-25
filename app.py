@@ -1,19 +1,22 @@
 import os
 import sys
+import re  # 💡 এই ইমপোর্টটি মিসিং ছিল, এটি যোগ করুন
+import asyncio
+import json
 import streamlit as st
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
 @st.cache_resource
 def initialize_playwright_browser():
-    # sys.executable ব্যবহার করায় এটি নিশ্চিতভাবে সঠিক ভার্চুয়াল এনভায়রনমেন্টের পাইথনকে কল করবে
     os.system(f"{sys.executable} -m playwright install chromium")
     return True
 
-# ব্রাউজার ইনস্টলেশন রান করা হলো
 initialize_playwright_browser()
 # ========================================================================
 
 from playwright.async_api import async_playwright
+
+# --- এরপর আপনার বাকি কোড (uploaded_file, parse_uploaded_numbers ইত্যাদি) যেভাবে আছে সেভাবেই থাকবে ---
 # .... (বাকি কোড সব আগের মতোই থাকবে)
 
 # ==================== CONFIGURATION ====================
