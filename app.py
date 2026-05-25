@@ -3,13 +3,12 @@ import os
 import sys
 import re
 import asyncio
+import json  # <--- এই লাইনটি অবশ্যই যোগ করুন!
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
 @st.cache_resource
 def initialize_playwright_browser():
-    # লিনাক্স ওএসের প্রয়োজনীয় লাইব্রেরি ব্যাকগ্রাউন্ডে ইনস্টল করবে
     os.system(f"{sys.executable} -m playwright install-deps")
-    # ক্রোমিয়াম ব্রাউজার ইনস্টল করবে
     os.system(f"{sys.executable} -m playwright install chromium")
     return True
 
