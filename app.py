@@ -1,23 +1,21 @@
+import streamlit as st
 import os
 import sys
-import asyncio
-import json
 import re
-import io
-from datetime import datetime
-import streamlit as st
+import asyncio
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
 @st.cache_resource
 def initialize_playwright_browser():
-    # প্রথমে ক্লাউড লিনাক্স সিস্টেমের জন্য প্রয়োজনীয় ডিপেন্ডেন্সি ইনস্টল করবে
+    # লিনাক্স ওএসের প্রয়োজনীয় লাইব্রেরি ব্যাকগ্রাউন্ডে ইনস্টল করবে
     os.system(f"{sys.executable} -m playwright install-deps")
-    # তারপর ক্রোমিয়াম ব্রাউজার ইনস্টল করবে
+    # ক্রোমিয়াম ব্রাউজার ইনস্টল করবে
     os.system(f"{sys.executable} -m playwright install chromium")
     return True
 
 initialize_playwright_browser()
-# ========================================================================
+
+# আপনার বাকি কোডের ইমপোর্টগুলো (যেমন reportlab) এর নিচে থাকবে...
 from playwright.async_api import async_playwright
 
 # Try importing ReportLab for PDF generation
