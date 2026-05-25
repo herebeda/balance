@@ -1,2 +1,2 @@
-streamlit
-playwright
+# Replace opencv-python with:
+opencv-python-headless
