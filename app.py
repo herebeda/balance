@@ -20,23 +20,7 @@ from playwright.async_api import async_playwright
 
 # ==================== CONFIGURATION ====================
 MAX_RECHARGE_LIMIT = 1000  
-# .... (বাকি কোড সব আগের মতোই থাকবে)import asyncio
-import json
-import re
-import sys
-import os
-import streamlit as st
-
-# ==================== AUTOMATIC BROWSER INSTALLATION ====================
-if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
-    with st.spinner("Downloading Headless Chromium... Please wait..."):
-        # 💡 পরিবর্তন: সরাসরি 'playwright' না লিখে 'python -m playwright' ব্যবহার করা হয়েছে
-        os.system("python -m playwright install chromium")
-# ========================================================================
-from playwright.async_api import async_playwright
-
-# ==================== CONFIGURATION ====================
-MAX_RECHARGE_LIMIT = 1000  
+# .... (বাকি কোড সব আগের মতোই থাকবে)  
 MIN_RECHARGE_LIMIT = 20    
 CUSTOMER_EMAIL = "emailhere@gmail.com"  
 # =======================================================
