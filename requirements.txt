@@ -1,3 +1,1 @@
-# opencv-python এর বদলে এটি ব্যবহার করুন:
-opencv-python-headless# Replace opencv-python with:
 opencv-python-headless
