@@ -6,6 +6,28 @@ import os
 import streamlit as st
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
+# স্ট্রিমলিট ক্লাউডের জন্য গ্যারান্টিড ব্রাউজার ইনস্টলেশন মেকানিজম
+@st.cache_resource
+def initialize_playwright_browser():
+    # কোনো কন্ডিশন ছাড়া অ্যাপ চালুর শুরুতে একবার ফ্রেশ ক্রোমিয়াম ডাউনলোড নিশ্চিত করবে
+    os.system("python -m playwright install chromium")
+    return True
+
+# ফাংশনটি রান করানো হলো
+initialize_playwright_browser()
+# ========================================================================
+from playwright.async_api import async_playwright
+
+# ==================== CONFIGURATION ====================
+MAX_RECHARGE_LIMIT = 1000  
+# .... (বাকি কোড সব আগের মতোই থাকবে)import asyncio
+import json
+import re
+import sys
+import os
+import streamlit as st
+
+# ==================== AUTOMATIC BROWSER INSTALLATION ====================
 if not os.path.exists(os.path.expanduser("~/.cache/ms-playwright")):
     with st.spinner("Downloading Headless Chromium... Please wait..."):
         # 💡 পরিবর্তন: সরাসরি 'playwright' না লিখে 'python -m playwright' ব্যবহার করা হয়েছে
