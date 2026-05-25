@@ -2,3 +2,6 @@ streamlit==1.57.0
 playwright==1.60.0
 numpy==2.4.6
 opencv-python-headless==4.13.0.92
+streamlit
+reportlab
+playwright
