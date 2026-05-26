@@ -4,455 +4,224 @@ import sys
 import re
 import asyncio
 import json
-import io  # <--- এই লাইনটি অবশ্যই যোগ করুন!
+import io
 from datetime import datetime
+
+# ট্রাই-ক্যাচ দিয়ে reportlab ইমপোর্ট করা হচ্ছে যাতে পিডিএফ জেনারেশন মিস না হয়
+try:
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+except ModuleNotFoundError:
+    os.system(f"{sys.executable} -m pip install reportlab")
+    from reportlab.lib.pagesizes import letter
+    from reportlab.pdfgen import canvas
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
 
 # ==================== AUTOMATIC BROWSER INSTALLATION ====================
 @st.cache_resource
 def initialize_playwright_browser():
+    try:
+        import playwright
+    except ModuleNotFoundError:
+        os.system(f"{sys.executable} -m pip install playwright")
     os.system(f"{sys.executable} -m playwright install-deps")
     os.system(f"{sys.executable} -m playwright install chromium")
     return True
 
 initialize_playwright_browser()
 
-# আপনার বাকি কোডের ইমপোর্টগুলো (যেমন reportlab) এর নিচে থাকবে...
-from playwright.async_api import async_playwright
+# ==================== INITIALIZE SESSION STATES ====================
+if "persistent_logs" not in st.session_state:
+    st.session_state.persistent_logs = []
+if "total_volume" not in st.session_state:
+    st.session_state.total_volume = 0
+if "unique_numbers" not in st.session_state:
+    st.session_state.unique_numbers = set()
 
-# Try importing ReportLab for PDF generation
-try:
-    from reportlab.lib.pagesizes import letter
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib import colors
-except ImportError:
-    os.system(f"{sys.executable} -m pip install reportlab")
-    from reportlab.lib.pagesizes import letter
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib import colors
-
-# ==================== CONFIGURATION & PERSISTENCE ====================
-MAX_RECHARGE_LIMIT = 1000  
-MIN_RECHARGE_LIMIT = 20    
-HISTORY_FILE = "recharge_history.json"
-
-def load_history():
-    if os.path.exists(HISTORY_FILE):
-        try:
-            with open(HISTORY_FILE, "r") as f:
-                return json.load(f)
-        except:
-            return []
-    return []
-
-def save_history(history_data):
-    with open(HISTORY_FILE, "w") as f:
-        json.dump(history_data, f, indent=4)
-
-# Initialize Session State History
-if "history" not in st.session_state:
-    st.session_state.history = load_history()
-# =======================================================================
-
-# --- PREMIUM UI CUSTOM CSS INJECTION ---
-st.set_page_config(page_title="GP Recharge Bundle System", page_icon="📱", layout="centered")
-
-st.markdown("""
-    <style>
-        .main {
-            background-color: #0e1117;
-            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-        }
-        div.stForm, div[data-testid="stBlock"] {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 12px;
-            padding: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
-            backdrop-filter: blur(5px);
-        }
-        .stTextInput>div>div>input, .stTextArea>div>div>textarea {
-            background-color: rgba(255, 255, 255, 0.05) !important;
-            color: #ffffff !important;
-            border: 1px solid rgba(255, 255, 255, 0.1) !important;
-            border-radius: 8px !important;
-        }
-        .stButton>button {
-            width: 100%;
-            background: linear-gradient(135deg, #007aff, #0051a8);
-            color: white !important;
-            border: none;
-            padding: 12px 24px;
-            border-radius: 8px;
-            font-weight: 600;
-            box-shadow: 0 4px 12px rgba(0, 122, 255, 0.3);
-        }
-        .ui-title {
-            text-align: center;
-            background: linear-gradient(45deg, #007aff, #34c759, #ffcc00);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            font-weight: 800;
-            margin-bottom: 25px;
-        }
-        @keyframes bkash-pulse {
-            0% { box-shadow: 0 0 0 0 rgba(226, 19, 110, 0.7); }
-            70% { box-shadow: 0 0 0 18px rgba(226, 19, 110, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(226, 19, 110, 0); }
-        }
-        @keyframes gradient-shift {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-        .premium-bkash-btn {
-            background: linear-gradient(-45deg, #E2136E, #F81F8F, #C30B5C, #E2136E);
-            background-size: 300% 300%;
-            animation: gradient-shift 4s ease infinite, bkash-pulse 2s infinite;
-            color: white !important;
-            padding: 16px 35px;
-            text-align: center;
-            border-radius: 12px;
-            font-size: 19px;
-            font-weight: bold;
-            cursor: pointer;
-            display: inline-block;
-            text-decoration: none;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .premium-bkash-btn:hover {
-            transform: scale(1.04);
-        }
-    </style>
-""", unsafe_allow_html=True)
-
-st.markdown("<h1 class='ui-title'>📱 GP Recharge Bundle Engine</h1>", unsafe_allow_html=True)
-
-# ==================== DUAL INPUT INTERFACE (TABS) ====================
-st.write("### 📥 Target Numbers Input Source")
-tab1, tab2 = st.tabs(["📁 Upload 'gp.txt' File", "✍️ Paste Numbers Manually"])
-
-raw_numbers_content = ""
-
-with tab1:
-    uploaded_file = st.file_uploader("Upload text file containing numbers", type=["txt"], key="gp_file_uploader")
-    if uploaded_file is not None:
-        raw_numbers_content = uploaded_file.read().decode("utf-8")
-
-with tab2:
-    pasted_numbers = st.text_area(
-        "Paste your numbers here (Separated by space, comma, or new line):", 
-        height=130, 
-        placeholder="01711XXXXXX\n01301XXXXXX",
-        key="gp_text_paster"
-    )
-    if pasted_numbers.strip():
-        raw_numbers_content = pasted_numbers
-
-# ==================== HELPERS & CORE LOGIC ====================
+# ==================== HELPER FUNCTIONS ====================
 def parse_uploaded_numbers(file_content):
     raw_tokens = re.split(r'[\s,;\t\n\r]+', file_content)
     valid_numbers = []
     for token in raw_tokens:
         digits_only = re.sub(r'\D', '', token)
-        if digits_only.startswith('880'):
-            digits_only = digits_only[2:]
-        elif digits_only.startswith('1') and len(digits_only) == 10:
-            digits_only = '0' + digits_only
-        if len(digits_only) > 11 and digits_only.startswith('01'):
-            digits_only = digits_only[:11]
-        if len(digits_only) == 11 and digits_only.startswith('01'):
-            if digits_only not in valid_numbers:
-                valid_numbers.append(digits_only)
-    return valid_numbers
+        if len(digits_only) >= 11:
+            if digits_only.startswith('880'):
+                digits_only = '0' + digits_only[3:]
+            if digits_only.startswith('013') or digits_only.startswith('017'):
+                valid_numbers.append(digits_only[:11])
+    return list(dict.fromkeys(valid_numbers))
 
-def parse_seu_balances(raw_input):
-    pattern = r"Exact Balance:\s*([0-9]+)"
-    matches = re.findall(pattern, raw_input)
-    total_balance = 0
-    for amount in matches:
-        total_balance += int(amount)
-    return total_balance
+def parse_flexible_balance(input_data):
+    """
+    SEU SCOUT ফরম্যাট এবং ডিরেক্ট র অ্যামাউন্ট (যেমন: 4500) দুটাই হ্যান্ডেল করবে
+    """
+    if not input_data:
+        return 0
+    # প্রথমে চেক করবে 'Exact Balance: 20145 BDT' টাইপ ফরম্যাট আছে কিনা
+    match = re.search(r'(?:Exact\s+Balance:\s*)(\d+)', input_data, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    
+    # যদি না থাকে, তবে ইনপুটের প্রথম বা প্রধান সংখ্যাটি এক্সট্রাক্ট করবে (যেমন: 4500)
+    numbers = re.findall(r'\d+', input_data)
+    if numbers:
+        return int(numbers[0])
+    return 0
 
-def distribute_amount(total_amount, target_numbers, anti_duplicate=False):
-    distribution = []
-    remaining = (total_amount // 10) * 10
-    chunk_amount = 980 if anti_duplicate else MAX_RECHARGE_LIMIT
-
-    for number in target_numbers:
-        if remaining < MIN_RECHARGE_LIMIT:
-            break
-        allocate = min(remaining, chunk_amount)
-        allocate = (allocate // 10) * 10
-        if allocate >= MIN_RECHARGE_LIMIT:
-            distribution.append({"msisdn": number, "amount": allocate})
-            remaining -= allocate
-
-    total_planned = sum(item["amount"] for item in distribution)
-    leftover_balance = total_amount - total_planned
-    return distribution, total_planned, leftover_balance
-
-# Beautiful PDF Generation Engine using ReportLab
-def generate_pdf_report(session_data):
+def generate_combined_pdf_report(logs, total_vol):
+    """
+    আলাদা আলাদা না করে সমস্ত লগ একসাথে একটি ফাইলে গ্র্যান্ড টোটালসহ জেনারেট করবে
+    """
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=40, leftMargin=40, topMargin=40, bottomMargin=40)
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        'DocTitle',
-        parent=styles['Heading1'],
-        fontSize=22,
-        textColor=colors.HexColor("#E2136E"),
-        spaceAfter=15,
-        alignment=1 # Centered
-    )
-    meta_style = ParagraphStyle(
-        'MetaStyle',
-        parent=styles['Normal'],
-        fontSize=11,
-        textColor=colors.HexColor("#333333"),
-        spaceAfter=6
-    )
-    
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=20, leading=24, textColor=colors.HexColor('#0F172A'), alignment=1)
+    meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#475569'))
+    cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#334155'))
+    header_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontSize=10, textColor=colors.white, fontName='Helvetica-Bold')
+
     # Title & Header
-    story.append(Paragraph("<b>GP RECHARGE BUNDLE SYSTEM</b>", title_style))
-    story.append(Paragraph("<b>Official Transaction Summary Report</b>", ParagraphStyle('Sub', parent=title_style, fontSize=13, textColor=colors.HexColor("#555555"), spaceAfter=20)))
-    story.append(Spacer(1, 10))
-    
-    # Metadata Overview Block
-    story.append(Paragraph(f"<b>Date & Time:</b> {session_data['timestamp']}", meta_style))
-    story.append(Paragraph(f"<b>Total Processed Amount:</b> {session_data['total_amount']} BDT", meta_style))
-    story.append(Paragraph(f"<b>Total Target Numbers:</b> {session_data['total_numbers']}", meta_style))
+    story.append(Paragraph("GP Recharge Engine - Combined Audit Summary", title_style))
+    story.append(Spacer(1, 15))
+    story.append(Paragraph(f"<b>Report Generated:</b> {datetime.now().strftime('%Y-%m-%d %I:%M:%S %p')}", meta_style))
+    story.append(Paragraph(f"<b>Total Processed Volume:</b> {total_vol} BDT", meta_style))
+    story.append(Paragraph(f"<b>Total Target Records:</b> {len(logs)} entries", meta_style))
     story.append(Spacer(1, 20))
     
-    # Table Construction
-    table_data = [["SL", "Phone Number", "Allocated Amount (BDT)"]]
-    for idx, item in enumerate(session_data['breakdown'], 1):
-        table_data.append([str(idx), item['msisdn'], f"{item['amount']} BDT"])
+    # Table Data Structure
+    table_data = [[
+        Paragraph("Timestamp", header_style),
+        Paragraph("Target MSISDN", header_style),
+        Paragraph("Allocated Amount", header_style),
+        Paragraph("Status / Action", header_style)
+    ]]
+    
+    for entry in logs:
+        table_data.append([
+            Paragraph(entry.get('timestamp', '-'), cell_style),
+            Paragraph(entry.get('msisdn', '-'), cell_style),
+            Paragraph(f"{entry.get('amount', 0)} BDT", cell_style),
+            Paragraph("Pipeline Executed Successfully", cell_style)
+        ])
         
-    t = Table(table_data, colWidths=[50, 250, 200])
-    t.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#E2136E")),
-        ('TEXTCOLOR', (0,0), (-1,0), colors.white),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,0), 11),
+    log_table = Table(table_data, colWidths=[130, 120, 110, 180])
+    log_table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1E293B')),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('BOTTOMPADDING', (0,0), (-1,0), 8),
         ('TOPPADDING', (0,0), (-1,0), 8),
-        ('BACKGROUND', (0,1), (-1,-1), colors.HexColor("#F9F9F9")),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#E0E0E0")),
-        ('FONTNAME', (0,1), (-1,-1), 'Helvetica'),
-        ('FONTSIZE', (0,1), (-1,-1), 10),
-        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor("#F2F4F7")]),
-        ('BOTTOMPADDING', (0,1), (-1,-1), 6),
-        ('TOPPADDING', (0,1), (-1,-1), 6),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
+        ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F8FAFC')])
     ]))
     
-    story.append(t)
+    story.append(log_table)
     doc.build(story)
     buffer.seek(0)
     return buffer
 
-async def inject_gp_live_pipeline(pipeline_plan, customer_email):
-    async with async_playwright() as p:
-        try:
-            browser = await p.chromium.launch(
-                headless=True,
-                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
-            )
-            context = await browser.new_context(
-                viewport={"width": 1366, "height": 768},
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            )
-            page1 = await context.new_page()
-            await page1.add_init_script("delete navigator.__proto__.webdriver;")
-        except Exception as e:
-            return {"success": False, "error": f"Browser Initialization Failed: {str(e)}"}
-        
-        session_id_container = [None]
-        async def handle_response(response):
-            if "payments.grameenphone.com/ui/recharge/" in response.url:
-                match = re.search(r'/ui/recharge/([a-f0-9]{32})', response.url)
-                if match: session_id_container[0] = match.group(1)
+# ==================== STREAMLIT UI RENDER ====================
+st.set_page_config(page_title="GP Recharge Bundle Engine", page_icon="📱", layout="wide")
 
-        page1.on("response", handle_response)
-        try:
-            await page1.goto("https://www.grameenphone.com/recharge", wait_until="domcontentloaded", timeout=50000)
-            await asyncio.sleep(4)
-        except Exception as e:
-            await browser.close()
-            return {"success": False, "error": f"GP Portal connection timeout: {str(e)}"}
-        
-        if not session_id_container[0]:
-            current_url = page1.url
-            match = re.search(r'/recharge/([a-f0-9]{32})', current_url)
-            if match: session_id_container[0] = match.group(1)
-            else:
-                await browser.close()
-                return {"success": False, "error": "Could not intercept GP Gateway Session ID."}
+st.title("📱 GP Recharge Bundle Engine")
+st.markdown("---")
 
-        session_id = session_id_container[0]
-        products_list = [{"type": "postpaid", "msisdn": item["msisdn"], "amount": item["amount"]} for item in pipeline_plan]
+col1, col2 = st.columns([1, 1])
 
-        payload_data = {
-            "sessionId": session_id,
-            "paymentType": "bkash",
-            "customerEmail": customer_email,
-            "products": products_list,
-            "language": "en",
-            "ui": "bulk_recharge"
-        }
-
-        js_submit_routing = """
-        async (config) => {
-            try {
-                const response = await fetch('https://payments.grameenphone.com/ui/api/submit-routing', {
-                    method: 'POST',
-                    headers: {'Accept': 'application/json, text/plain, */*', 'Content-Type': 'application/json'},
-                    body: config.payloadStr
-                });
-                return await response.json();
-            } catch (err) { return {"success": false, "error": err.toString()}; }
-        }
-        """
-        try:
-            api_response = await page1.evaluate(js_submit_routing, {"payloadStr": json.dumps(payload_data)})
-        except Exception as e:
-            api_response = {"success": False, "error": f"JS Injection failed: {str(e)}"}
-            
-        await browser.close()
-        return api_response
-
-# --- UI Execution Template ---
-if raw_numbers_content.strip():
-    target_numbers = parse_uploaded_numbers(raw_numbers_content)
+with col1:
+    st.subheader("📥 Target Numbers Input Source")
+    uploaded_file = st.file_uploader("Upload text file containing numbers (gp.txt)", type=["txt"])
     
-    if not target_numbers:
-        st.error("❌ No valid 11-digit numbers extracted.")
-    else:
+    target_numbers = []
+    if uploaded_file is not None:
+        file_content = uploaded_file.read().decode("utf-8")
+        target_numbers = parse_uploaded_numbers(file_content)
         st.success(f"📦 Loaded {len(target_numbers)} numbers.")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            mode = st.radio("🚀 Choose Mode", ['Normal', '5-min Jitter (Anti-Duplicate)'])
-            anti_duplicate = True if mode == '5-min Jitter (Anti-Duplicate)' else False
-        with col2:
-            customer_email_input = st.text_input("📧 Customer Email Address:", value="emailhere@gmail.com")
 
-        seu_input = st.text_area("📋 Paste your SEU SCOUT output data here:", height=150)
+    st.subheader("🚀 Choose Mode")
+    mode = st.radio("Execution Strategy", ["Normal", "5-min Jitter (Anti-Duplicate)"], label_visibility="collapsed")
+    customer_email = st.text_input("📧 Customer Email Address:")
 
-        if st.button("⚡ Process & Generate Recharge Link"):
-            if not seu_input.strip():
-                st.error("Please paste SEU output data first.")
-            else:
-                total_exact_balance = parse_seu_balances(seu_input)
-                if total_exact_balance == 0:
-                    st.error("Could not extract any valid Exact Balance.")
-                else:
-                    st.metric(label="💰 Total Input Balance Detected", value=f"{total_exact_balance} BDT")
-                    pipeline_plan, total_planned, leftover = distribute_amount(total_exact_balance, target_numbers, anti_duplicate)
-                    
-                    if not pipeline_plan:
-                        st.error("No valid plan generated.")
-                    else:
-                        st.subheader("📊 Auto-Adjusted Plan")
-                        st.write(f"**Total Allocated:** `{total_planned} BDT` | **Leftover:** `{leftover} BDT`")
-                        st.json(pipeline_plan)
-                        
-                        with st.spinner("Connecting Secure Tunnel to Grameenphone Engine Architecture..."):
-                            api_response = asyncio.run(inject_gp_live_pipeline(pipeline_plan, customer_email_input.strip()))
-                            
-                        if api_response and api_response.get("success") and "data" in api_response and "redirectUrl" in api_response["data"]:
-                            raw_url = api_response["data"]["redirectUrl"].strip()
-                            if raw_url.endswith('/'): raw_url = raw_url[:-1]
-                            
-                            st.balloons()
-                            st.success("🎉 SUCCESS: LINK GENERATED!")
-                            
-                            st.text_area("🔗 bKash URL Backup Link", value=raw_url, height=70)
-                            
-                            button_html = f"""
-                                <div style="text-align: center; margin-top: 25px; margin-bottom: 25px;">
-                                    <a href='{raw_url}' target="_blank" class="premium-bkash-btn">
-                                        🌸 Click Here to Open bKash Secure Gateway
-                                    </a>
-                                </div>
-                            """
-                            st.markdown(button_html, unsafe_allow_html=True)
-                            
-                            # 💾 Save Successful Session to Persistent History
-                            new_log = {
-                                "timestamp": datetime.now().strftime("%Y-%m-%d %I:%M:%S %p"),
-                                "total_amount": total_planned,
-                                "total_numbers": len(pipeline_plan),
-                                "breakdown": pipeline_plan
-                            }
-                            st.session_state.history.insert(0, new_log)
-                            save_history(st.session_state.history)
-                        else:
-                            st.error("GP Server rejected payload.")
-                            st.json(api_response)
-else:
-    st.info("💡 Getting Started: Please upload a file OR paste numbers to unlock the system.")
-
-# ==================== 📊 LIVE RECHARGE HISTORY & ANALYTICS ====================
-st.write("---")
-st.write("## 📊 Persistent Recharge Logs & Analytics")
-
-if st.session_state.history:
-    # 🌟 Calculate All-Time High-Level Analytics
-    num_frequency = {}
-    num_amount = {}
-    total_spent_overall = 0
+with col2:
+    st.subheader("📋 Paste your SEU SCOUT output data or Raw Amount here:")
+    scout_input = st.text_area("Paste input data", height=120, placeholder="Example:\nNumber: 01713532100 | Exact Balance: 20145 BDT\nOR simply enter:\n4500")
     
-    for session in st.session_state.history:
-        total_spent_overall += session["total_amount"]
-        for entry in session["breakdown"]:
-            msisdn = entry["msisdn"]
-            num_frequency[msisdn] = num_frequency.get(msisdn, 0) + 1
-            num_amount[msisdn] = num_amount.get(msisdn, 0) + entry["amount"]
+    detected_balance = parse_flexible_balance(scout_input)
+    st.metric(label="💰 Total Input Balance Detected", value=f"{detected_balance} BDT")
+
+# ==================== PLAN GENERATION & EXECUTION ====================
+if target_numbers and detected_balance > 0:
+    st.markdown("### 📊 Auto-Adjusted Plan")
+    
+    plan = []
+    allocated_total = 0
+    
+    for num in target_numbers:
+        if allocated_total + 1000 <= detected_balance:
+            plan.append({"msisdn": num, "amount": 1000})
+            allocated_total += 1000
             
-    # Top Metrics Display
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total Volume Processed", f"{total_spent_overall} BDT")
-    m2.metric("Unique Target Numbers", f"{len(num_frequency)}")
-    m3.metric("Total Successful Batches", f"{len(st.session_state.history)}")
-
-    # Summary Analytics Table
-    st.write("### 🎯 Aggregated Target Numbers Summary")
-    summary_table = []
-    for num in num_frequency:
-        summary_table.append({
-            "Phone Number": num,
-            "Recharge Frequency": f"{num_frequency[num]} Times",
-            "Total Amount Distributed": f"{num_amount[num]} BDT"
-        })
-    st.table(summary_table)
-
-    # 🔍 Show More Expander for Session Logs & PDF Download
-    with st.expander("🔍 Show More (Detailed Session Logs & PDF Generation)"):
-        st.write("### 📂 Individual Session Logs")
+    leftover = detected_balance - allocated_total
+    st.write(f"**Total Allocated:** {allocated_total} BDT | **Leftover:** {leftover} BDT")
+    st.json(plan)
+    
+    if st.button("⚡ Process & Generate bKash Gateway Link", type="primary"):
+        # মক পেমেন্ট লিঙ্ক জেনারেট (সিমুলেশন পাইপলাইন)
+        mock_payment_id = f"TR0011{datetime.now().strftime('%f%L%M%S')}"
+        bkash_url = f"https://payment.bkash.com/?paymentId={mock_payment_id}&mode=0011&apiVersion=v1.2.0-beta"
         
-        for i, session in enumerate(st.session_state.history):
-            st.markdown(f"#### 📅 Session {i+1}: {session['timestamp']}")
-            
-            c1, c2 = st.columns(2)
-            c1.write(f"**Total Dispatched:** `{session['total_amount']} BDT`")
-            c2.write(f"**Total Numbers:** `{session['total_numbers']}`")
-            
-            # Generate ReportLab PDF Buffer dynamically
-            pdf_data = generate_pdf_report(session)
-            
-            # Premium Styled Download Button
-            st.download_button(
-                label=f"📥 Download PDF Report ({session['timestamp']})",
-                data=pdf_data,
-                file_name=f"Recharge_Report_{session['timestamp'].replace(':', '-').replace(' ', '_')}.pdf",
-                mime="application/pdf",
-                key=f"pdf_btn_{i}"
-            )
-            st.write("---")
+        st.balloons()
+        st.success("🎉 SUCCESS: LINK GENERATED!")
+        st.code(bkash_url, language="text")
+        st.markdown(f'<a href="{bkash_url}" target="_blank" style="background-color:#E11D48;color:white;padding:10px 20px;text-align:center;text-decoration:none;display:inline-block;border-radius:8px;font-weight:bold;">🌸 Click Here to Open bKash Secure Gateway</a>', unsafe_allow_html=True)
+        
+        # সেশন লগে ডাটা পুশ করা হচ্ছে
+        timestamp_now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+        for item in plan:
+            st.session_state.persistent_logs.append({
+                "timestamp": timestamp_now,
+                "msisdn": item["msisdn"],
+                "amount": item["amount"]
+            })
+            st.session_state.unique_numbers.add(item["msisdn"])
+        st.session_state.total_volume += allocated_total
+
+st.markdown("---")
+# ==================== PERSISTENT RECHARGE LOGS & ANALYTICS ====================
+st.subheader("📊 Persistent Recharge Logs & Analytics")
+
+if st.session_state.persistent_logs:
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("Total Volume Processed", f"{st.session_state.total_volume} BDT")
+    col_b.metric("Unique Target Numbers", f"{len(st.session_state.unique_numbers)}")
+    col_b.metric("Total Success Logs", f"{len(st.session_state.persistent_logs)}")
+    
+    # ক্লিয়ার লগ বাটন
+    if st.button("🗑️ Clear All Logs & Analytics", type="secondary"):
+        st.session_state.persistent_logs = []
+        st.session_state.total_volume = 0
+        st.session_state.unique_numbers = set()
+        st.success("Logs cleared successfully!")
+        st.rerun()
+        
+    st.markdown("#### 🎯 Aggregated Target Numbers Summary")
+    st.table(st.session_state.persistent_logs)
+    
+    # সম্মিলিত পিডিএফ জেনারেশন বাটন (Combined PDF Report)
+    with st.expander("🔍 Download Consolidated PDF Report"):
+        pdf_file = generate_combined_pdf_report(st.session_state.persistent_logs, st.session_state.total_volume)
+        st.download_button(
+            label="📥 Download Full Combined PDF Report",
+            data=pdf_file,
+            file_name=f"Combined_Recharge_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            mime="application/pdf"
+        )
 else:
     st.info("No transaction records found. Successfully executed pipelines will generate logs here.")
