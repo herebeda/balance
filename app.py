@@ -64,7 +64,7 @@ def parse_numbers(raw_text):
             cleaned = num[2:]
         else:
             cleaned = num
-        valid_numbers.append(cleaned)
+            valid_numbers.append(cleaned)
     return list(dict.fromkeys(valid_numbers))
 
 def parse_flexible_balance(input_data):
@@ -326,35 +326,31 @@ if target_numbers:
         
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ==================== PLAN GRID GENERATION ====================
-if detected_balance > 0:
-    st.markdown("---")
-    st.markdown("### 📊 Auto-Adjusted Plan Grid")
-    
-    plan = []
-    allocated_total = 0
-    
-    for num in target_numbers:
-        amt_to_charge = 1000 if mode == "Normal" else 980
+    # ==================== PLAN GRID GENERATION ====================
+    if detected_balance > 0:
+        st.markdown("---")
+        st.markdown("### 📊 Auto-Adjusted Plan Grid")
         
-        # যদি পুরো ১০০০ টাকা দেওয়ার মতো ব্যালেন্স থাকে
-        if allocated_total + amt_to_charge <= detected_balance:
-            plan.append({"msisdn": num, "amount": amt_to_charge})
-            allocated_total += amt_to_charge
-        else:
-            # বাকি বা অবশিষ্ট ব্যালেন্সটুকু হিসাব করা হচ্ছে (যেমন: ২৯৯০০ - ২৯০০০ = ৯০০)
-            remainder = detected_balance - allocated_total
-            if remainder > 0:
-                plan.append({"msisdn": num, "amount": remainder})
-                allocated_total += remainder
-            break  # ব্যালেন্স শেষ হলে লুপ বন্ধ হবে
+        plan = []
+        allocated_total = 0
+        for num in target_numbers:
+            amt_to_charge = 1000 if mode == "Normal" else 980
             
-    st.json(plan)
+            if allocated_total + amt_to_charge <= detected_balance:
+                plan.append({"msisdn": num, "amount": amt_to_charge})
+                allocated_total += amt_to_charge
+            else:
+                remainder = detected_balance - allocated_total
+                if remainder > 0:
+                    plan.append({"msisdn": num, "amount": remainder})
+                    allocated_total += remainder
+                break
+                
+        st.json(plan)
         
         st.markdown("### ⚡ Step 4: Secure Gateway Action")
         st.write("নিচের বাটনে ক্লিক করলে ব্যাকগ্রাউন্ডে প্লে-রাইট ইঞ্জিন সরাসরি জিপি সার্ভার থেকে লাইভ টোকেন গেটওয়ে লিংক ক্যাচ করবে।")
         
-        # বাটন ১: লাইভ লিঙ্কের জন্য জিপি সার্ভার ইন্টারসেপ্ট করবে
         if st.button("🚀 Intercept Live GP Secure Link", type="primary"):
             with st.spinner("Connecting Secure Tunnel to Grameenphone Engine Architecture..."):
                 api_response = asyncio.run(inject_gp_live_pipeline(plan, customer_email.strip()))
@@ -364,7 +360,6 @@ if detected_balance > 0:
                 if raw_url.endswith('/'): 
                     raw_url = raw_url[:-1]
                 
-                # সেশন স্টেটে টেম্পোরারি ডেটা সেভ রাখা হচ্ছে (কনফার্ম করার আগ পর্যন্ত মূল লগে ঢুকবে না)
                 st.session_state.temp_url = raw_url
                 st.session_state.temp_plan = plan
                 st.session_state.temp_total_planned = allocated_total
@@ -380,7 +375,6 @@ if detected_balance > 0:
             st.markdown("#### 📡 Intercepted Dynamic bKash URL (Full Payload Verified):")
             st.code(st.session_state.temp_url, language="text")
             
-            # ডেটাবেজ লগে সিঙ্ক করার বাটন
             if not st.session_state.payment_confirmed:
                 if st.button("🔗 Confirm Payment & Sync to Logs/PDF"):
                     timestamp_now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
@@ -396,7 +390,6 @@ if detected_balance > 0:
                     st.balloons()
                     st.rerun()
             
-            # লগ সিঙ্ক হওয়ার পর প্রিমিয়াম বিকাশ বাটন দৃশ্যমান হবে
             if st.session_state.payment_confirmed:
                 st.success("🎉 SYNC COMPLETE: History Database updated and locked!")
                 button_html = f"""
