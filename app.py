@@ -326,22 +326,30 @@ if target_numbers:
         
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ==================== PLAN GRID GENERATION ====================
-    if detected_balance > 0:
-        st.markdown("---")
-        st.markdown("### 📊 Auto-Adjusted Plan Grid")
+# ==================== PLAN GRID GENERATION ====================
+if detected_balance > 0:
+    st.markdown("---")
+    st.markdown("### 📊 Auto-Adjusted Plan Grid")
+    
+    plan = []
+    allocated_total = 0
+    
+    for num in target_numbers:
+        amt_to_charge = 1000 if mode == "Normal" else 980
         
-        plan = []
-        allocated_total = 0
-        for num in target_numbers:
-            amt_to_charge = 1000 if mode == "Normal" else 980
-            if allocated_total + amt_to_charge <= detected_balance:
-                plan.append({"msisdn": num, "amount": amt_to_charge})
-                allocated_total += amt_to_charge
-            else:
-                break
-                
-        st.json(plan)
+        # যদি পুরো ১০০০ টাকা দেওয়ার মতো ব্যালেন্স থাকে
+        if allocated_total + amt_to_charge <= detected_balance:
+            plan.append({"msisdn": num, "amount": amt_to_charge})
+            allocated_total += amt_to_charge
+        else:
+            # বাকি বা অবশিষ্ট ব্যালেন্সটুকু হিসাব করা হচ্ছে (যেমন: ২৯৯০০ - ২৯০০০ = ৯০০)
+            remainder = detected_balance - allocated_total
+            if remainder > 0:
+                plan.append({"msisdn": num, "amount": remainder})
+                allocated_total += remainder
+            break  # ব্যালেন্স শেষ হলে লুপ বন্ধ হবে
+            
+    st.json(plan)
         
         st.markdown("### ⚡ Step 4: Secure Gateway Action")
         st.write("নিচের বাটনে ক্লিক করলে ব্যাকগ্রাউন্ডে প্লে-রাইট ইঞ্জিন সরাসরি জিপি সার্ভার থেকে লাইভ টোকেন গেটওয়ে লিংক ক্যাচ করবে।")
