@@ -44,8 +44,13 @@ if "unique_numbers" not in st.session_state:
     st.session_state.unique_numbers = set()
 
 # ==================== HELPER FUNCTIONS ====================
-def parse_uploaded_numbers(file_content):
-    raw_tokens = re.split(r'[\s,;\t\n\r]+', file_content)
+def parse_numbers(raw_text):
+    """
+    টেক্সট বা ফাইল থেকে জিপি নাম্বার এক্সট্রাক্ট করার গ্লোবাল পার্সার
+    """
+    if not raw_text:
+        return []
+    raw_tokens = re.split(r'[\s,;\t\n\r|]+', raw_text)
     valid_numbers = []
     for token in raw_tokens:
         digits_only = re.sub(r'\D', '', token)
@@ -58,49 +63,61 @@ def parse_uploaded_numbers(file_content):
 
 def parse_flexible_balance(input_data):
     """
-    SEU SCOUT ফরম্যাট এবং ডিরেক্ট র অ্যামাউন্ট (যেমন: 4500) দুটাই হ্যান্ডেল করবে
+    SEU SCOUT ফরম্যাট এবং ডিরেক্ট র অ্যামাউন্ট (যেমন: 5000) দুটাই বুদ্ধিমানভাবে হ্যান্ডেল করবে
     """
     if not input_data:
         return 0
-    # প্রথমে চেক করবে 'Exact Balance: 20145 BDT' টাইপ ফরম্যাট আছে কিনা
+    input_data = input_data.strip()
+    
+    # কেস ১: স্ট্যান্ডার্ড SEU SCOUT ফরম্যাট (Exact Balance: 20145)
     match = re.search(r'(?:Exact\s+Balance:\s*)(\d+)', input_data, re.IGNORECASE)
     if match:
         return int(match.group(1))
+        
+    # কেস ২: টেক্সটের ভেতর কোনো সংখ্যার সাথে BDT বা TK লেখা থাকলে
+    match_bdt = re.search(r'(\d+)\s*(?:BDT|TK|Taka)', input_data, re.IGNORECASE)
+    if match_bdt:
+        return int(match_bdt.group(1))
     
-    # যদি না থাকে, তবে ইনপুটের প্রথম বা প্রধান সংখ্যাটি এক্সট্রাক্ট করবে (যেমন: 4500)
-    numbers = re.findall(r'\d+', input_data)
-    if numbers:
-        return int(numbers[0])
+    # কেস ৩: ইউজার যদি জাস্ট '5000' টাইপ করে বা ফোন নাম্বারসহ র ডাটা দেয়
+    tokens = re.split(r'[\s,;\t\n\r|]+', input_data)
+    for token in tokens:
+        d = re.sub(r'\D', '', token)
+        if d:
+            # ফোন নাম্বার লেন্থ (১১ বা ১৩ ডিজিট) হলে সেটা ব্যালেন্স না, স্কিপ করবে
+            if len(d) in [11, 13] and (d.startswith('01') or d.startswith('880')):
+                continue
+            # রিয়েলিস্টিক ব্যালেন্স অ্যামাউন্ট (১ থেকে ৬ ডিজিট) হলে সেটা রিটার্ন করবে
+            if len(d) <= 6:
+                return int(d)
     return 0
 
 def generate_combined_pdf_report(logs, total_vol):
     """
-    আলাদা আলাদা না করে সমস্ত লগ একসাথে একটি ফাইলে গ্র্যান্ড টোটালসহ জেনারেট করবে
+    সমস্ত লগ হিস্ট্রি এবং গ্র্যান্ড টোটাল একসাথে সিঙ্গেল ফাইলে জেনারেট করার ইঞ্জিন
     """
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     story = []
     
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=20, leading=24, textColor=colors.HexColor('#0F172A'), alignment=1)
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=18, leading=22, textColor=colors.HexColor('#0F172A'), alignment=1)
     meta_style = ParagraphStyle('MetaStyle', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#475569'))
     cell_style = ParagraphStyle('CellStyle', parent=styles['Normal'], fontSize=10, textColor=colors.HexColor('#334155'))
     header_style = ParagraphStyle('HeaderStyle', parent=styles['Normal'], fontSize=10, textColor=colors.white, fontName='Helvetica-Bold')
 
-    # Title & Header
     story.append(Paragraph("GP Recharge Engine - Combined Audit Summary", title_style))
     story.append(Spacer(1, 15))
     story.append(Paragraph(f"<b>Report Generated:</b> {datetime.now().strftime('%Y-%m-%d %I:%M:%S %p')}", meta_style))
     story.append(Paragraph(f"<b>Total Processed Volume:</b> {total_vol} BDT", meta_style))
     story.append(Paragraph(f"<b>Total Target Records:</b> {len(logs)} entries", meta_style))
-    story.append(Spacer(1, 20))
+    story.append(Spacer(1, 15))
     
-    # Table Data Structure
     table_data = [[
         Paragraph("Timestamp", header_style),
         Paragraph("Target MSISDN", header_style),
         Paragraph("Allocated Amount", header_style),
-        Paragraph("Status / Action", header_style)
+        Paragraph("Status", header_style)
     ]]
     
     for entry in logs:
@@ -108,16 +125,16 @@ def generate_combined_pdf_report(logs, total_vol):
             Paragraph(entry.get('timestamp', '-'), cell_style),
             Paragraph(entry.get('msisdn', '-'), cell_style),
             Paragraph(f"{entry.get('amount', 0)} BDT", cell_style),
-            Paragraph("Pipeline Executed Successfully", cell_style)
+            Paragraph("Pipeline Executed", cell_style)
         ])
         
-    log_table = Table(table_data, colWidths=[130, 120, 110, 180])
+    log_table = Table(table_data, colWidths=[140, 110, 110, 160])
     log_table.setStyle(TableStyle([
         ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1E293B')),
         ('ALIGN', (0,0), (-1,-1), 'LEFT'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0,0), (-1,0), 8),
-        ('TOPPADDING', (0,0), (-1,0), 8),
+        ('BOTTOMPADDING', (0,0), (-1,0), 6),
+        ('TOPPADDING', (0,0), (-1,0), 6),
         ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
         ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, colors.HexColor('#F8FAFC')])
     ]))
@@ -137,13 +154,23 @@ col1, col2 = st.columns([1, 1])
 
 with col1:
     st.subheader("📥 Target Numbers Input Source")
-    uploaded_file = st.file_uploader("Upload text file containing numbers (gp.txt)", type=["txt"])
     
-    target_numbers = []
+    # ফাইল আপলোড অপশন
+    uploaded_file = st.file_uploader("Option A: Upload text file containing numbers (gp.txt)", type=["txt"])
+    
+    # ডিরেক্ট পেস্ট অপশন
+    pasted_numbers = st.text_area("Option B: Or Paste Target Numbers directly here:", height=120, placeholder="Example:\n01712345678\n01398765432")
+    
+    # দুটো সোর্স কম্বাইন করা হচ্ছে
+    combined_raw_numbers = ""
     if uploaded_file is not None:
-        file_content = uploaded_file.read().decode("utf-8")
-        target_numbers = parse_uploaded_numbers(file_content)
-        st.success(f"📦 Loaded {len(target_numbers)} numbers.")
+        combined_raw_numbers += uploaded_file.read().decode("utf-8") + "\n"
+    if pasted_numbers:
+        combined_raw_numbers += pasted_numbers
+
+    target_numbers = parse_numbers(combined_raw_numbers)
+    if target_numbers:
+        st.success(f"📦 Total Loaded & Filtered: {len(target_numbers)} unique numbers.")
 
     st.subheader("🚀 Choose Mode")
     mode = st.radio("Execution Strategy", ["Normal", "5-min Jitter (Anti-Duplicate)"], label_visibility="collapsed")
@@ -151,13 +178,14 @@ with col1:
 
 with col2:
     st.subheader("📋 Paste your SEU SCOUT output data or Raw Amount here:")
-    scout_input = st.text_area("Paste input data", height=120, placeholder="Example:\nNumber: 01713532100 | Exact Balance: 20145 BDT\nOR simply enter:\n4500")
+    scout_input = st.text_area("Paste balance info here", height=150, placeholder="Example 1 (SCOUT):\nNumber: 01711223344 | Exact Balance: 20145 BDT\n\nExample 2 (Raw Amount):\n5000")
     
     detected_balance = parse_flexible_balance(scout_input)
     st.metric(label="💰 Total Input Balance Detected", value=f"{detected_balance} BDT")
 
 # ==================== PLAN GENERATION & EXECUTION ====================
 if target_numbers and detected_balance > 0:
+    st.markdown("---")
     st.markdown("### 📊 Auto-Adjusted Plan")
     
     plan = []
@@ -169,20 +197,23 @@ if target_numbers and detected_balance > 0:
             allocated_total += 1000
             
     leftover = detected_balance - allocated_total
-    st.write(f"**Total Allocated:** {allocated_total} BDT | **Leftover:** {leftover} BDT")
+    
+    c1, c2 = st.columns(2)
+    c1.info(f"**Total Allocated:** {allocated_total} BDT")
+    c2.warning(f"**Leftover / Unallocated:** {leftover} BDT")
+    
     st.json(plan)
     
     if st.button("⚡ Process & Generate bKash Gateway Link", type="primary"):
-        # মক পেমেন্ট লিঙ্ক জেনারেট (সিমুলেশন পাইপলাইন)
-        mock_payment_id = f"TR0011{datetime.now().strftime('%f%L%M%S')}"
+        mock_payment_id = f"TR0011{datetime.now().strftime('%f%M%S')}"
         bkash_url = f"https://payment.bkash.com/?paymentId={mock_payment_id}&mode=0011&apiVersion=v1.2.0-beta"
         
         st.balloons()
         st.success("🎉 SUCCESS: LINK GENERATED!")
         st.code(bkash_url, language="text")
-        st.markdown(f'<a href="{bkash_url}" target="_blank" style="background-color:#E11D48;color:white;padding:10px 20px;text-align:center;text-decoration:none;display:inline-block;border-radius:8px;font-weight:bold;">🌸 Click Here to Open bKash Secure Gateway</a>', unsafe_allow_html=True)
+        st.markdown(f'<a href="{bkash_url}" target="_blank" style="background-color:#E11D48;color:white;padding:12px 24px;text-align:center;text-decoration:none;display:inline-block;border-radius:8px;font-weight:bold;font-size:16px;">🌸 Click Here to Open bKash Secure Gateway</a>', unsafe_allow_html=True)
         
-        # সেশন লগে ডাটা পুশ করা হচ্ছে
+        # ডাটাবেজ বা সেশন লগে পুশ
         timestamp_now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
         for item in plan:
             st.session_state.persistent_logs.append({
@@ -201,27 +232,27 @@ if st.session_state.persistent_logs:
     col_a, col_b, col_c = st.columns(3)
     col_a.metric("Total Volume Processed", f"{st.session_state.total_volume} BDT")
     col_b.metric("Unique Target Numbers", f"{len(st.session_state.unique_numbers)}")
-    col_b.metric("Total Success Logs", f"{len(st.session_state.persistent_logs)}")
+    col_c.metric("Total Success Entries", f"{len(st.session_state.persistent_logs)}")
     
-    # ক্লিয়ার লগ বাটন
+    # ক্লিয়ার লগ বাটন
     if st.button("🗑️ Clear All Logs & Analytics", type="secondary"):
         st.session_state.persistent_logs = []
         st.session_state.total_volume = 0
         st.session_state.unique_numbers = set()
-        st.success("Logs cleared successfully!")
+        st.success("All database logs and metrics cleared!")
         st.rerun()
         
-    st.markdown("#### 🎯 Aggregated Target Numbers Summary")
+    st.markdown("#### 🎯 Aggregated Summary Table")
     st.table(st.session_state.persistent_logs)
     
-    # সম্মিলিত পিডিএফ জেনারেশন বাটন (Combined PDF Report)
+    # একত্রে সম্পূর্ণ পিডিএফ রিপোর্ট ডাউনলোড
     with st.expander("🔍 Download Consolidated PDF Report"):
         pdf_file = generate_combined_pdf_report(st.session_state.persistent_logs, st.session_state.total_volume)
         st.download_button(
             label="📥 Download Full Combined PDF Report",
             data=pdf_file,
-            file_name=f"Combined_Recharge_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            file_name=f"Combined_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
             mime="application/pdf"
         )
 else:
-    st.info("No transaction records found. Successfully executed pipelines will generate logs here.")
+    st.info("No transaction records found. Successfully executed pipelines will generate combined logs here.")
