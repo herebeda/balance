@@ -46,24 +46,28 @@ if "unique_numbers" not in st.session_state:
 # ==================== HELPER FUNCTIONS ====================
 def parse_numbers(raw_text):
     """
-    টেক্সট বা ফাইল থেকে জিপি নাম্বার এক্সট্রাক্ট করার গ্লোবাল পার্সার
+    গ্লোবাল রেগুলার এক্সপ্রেশন ইঞ্জিন: টেক্সটের ভেতর থেকে সমস্ত 013 এবং 017 নাম্বার 
+    সেপারেটর নির্বিশেষে (কমা, স্পেস, নিউলাইন) নিখুঁতভাবে এক্সট্রাক্ট করবে।
     """
     if not raw_text:
         return []
-    raw_tokens = re.split(r'[\s,;\t\n\r|]+', raw_text)
+    
+    # জিপি নাম্বারের (013/017) ১১ বা ১৩ ডিজিটের প্যাটার্ন স্ক্যান করবে
+    matches = re.findall(r'(?:88)?01[37]\d{8}', raw_text)
+    
     valid_numbers = []
-    for token in raw_tokens:
-        digits_only = re.sub(r'\D', '', token)
-        if len(digits_only) >= 11:
-            if digits_only.startswith('880'):
-                digits_only = '0' + digits_only[3:]
-            if digits_only.startswith('013') or digits_only.startswith('017'):
-                valid_numbers.append(digits_only[:11])
-    return list(dict.fromkeys(valid_numbers))
+    for num in matches:
+        if num.startswith('880'):
+            cleaned = num[2:]  # 88 বাদ দিয়ে মূল ১১ ডিজিট রাখবে
+        else:
+            cleaned = num
+        valid_numbers.append(cleaned)
+        
+    return list(dict.fromkeys(valid_numbers))  # ডুপ্লিকেট রিমুভ করবে
 
 def parse_flexible_balance(input_data):
     """
-    SEU SCOUT ফরম্যাট এবং ডিরেক্ট র অ্যামাউন্ট (যেমন: 5000) দুটাই বুদ্ধিমানভাবে হ্যান্ডেল করবে
+    SEU SCOUT ফরম্যাট এবং ডিরেক্ট র অ্যামাউন্ট (যেমন: 5000) দুটাই হ্যান্ডেল করবে
     """
     if not input_data:
         return 0
@@ -158,8 +162,8 @@ with col1:
     # ফাইল আপলোড অপশন
     uploaded_file = st.file_uploader("Option A: Upload text file containing numbers (gp.txt)", type=["txt"])
     
-    # ডিরেক্ট পেস্ট অপশন
-    pasted_numbers = st.text_area("Option B: Or Paste Target Numbers directly here:", height=120, placeholder="Example:\n01712345678\n01398765432")
+    # ডিরেক্ট পেস্ট অপশন (একাধিক নাম্বার পেস্টের জন্য এখন ১০০% রেডি)
+    pasted_numbers = st.text_area("Option B: Or Paste Target Numbers directly here:", height=120, placeholder="Example:\n01712345678\n01398765432\n01700000000, 01711111111")
     
     # দুটো সোর্স কম্বাইন করা হচ্ছে
     combined_raw_numbers = ""
