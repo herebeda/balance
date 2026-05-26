@@ -52,7 +52,6 @@ def parse_numbers(raw_text):
     if not raw_text:
         return []
     
-    # জিপি নাম্বারের (013/017) ১১ বা ১৩ ডিজিটের প্যাটার্ন স্ক্যান করবে
     matches = re.findall(r'(?:88)?01[37]\d{8}', raw_text)
     
     valid_numbers = []
@@ -73,25 +72,20 @@ def parse_flexible_balance(input_data):
         return 0
     input_data = input_data.strip()
     
-    # কেস ১: স্ট্যান্ডার্ড SEU SCOUT ফরম্যাট (Exact Balance: 20145)
     match = re.search(r'(?:Exact\s+Balance:\s*)(\d+)', input_data, re.IGNORECASE)
     if match:
         return int(match.group(1))
         
-    # কেস ২: টেক্সটের ভেতর কোনো সংখ্যার সাথে BDT বা TK লেখা থাকলে
     match_bdt = re.search(r'(\d+)\s*(?:BDT|TK|Taka)', input_data, re.IGNORECASE)
     if match_bdt:
         return int(match_bdt.group(1))
     
-    # কেস ৩: ইউজার যদি জাস্ট '5000' টাইপ করে বা ফোন নাম্বারসহ র ডাটা দেয়
     tokens = re.split(r'[\s,;\t\n\r|]+', input_data)
     for token in tokens:
         d = re.sub(r'\D', '', token)
         if d:
-            # ফোন নাম্বার লেন্থ (১১ বা ১৩ ডিজিট) হলে সেটা ব্যালেন্স না, স্কিপ করবে
             if len(d) in [11, 13] and (d.startswith('01') or d.startswith('880')):
                 continue
-            # রিয়েলিস্টিক ব্যালেন্স অ্যামাউন্ট (১ থেকে ৬ ডিজিট) হলে সেটা রিটার্ন করবে
             if len(d) <= 6:
                 return int(d)
     return 0
@@ -148,10 +142,109 @@ def generate_combined_pdf_report(logs, total_vol):
     buffer.seek(0)
     return buffer
 
-# ==================== STREAMLIT UI RENDER ====================
+# ==================== STREAMLIT UI & CYBERPUNK CSS CUSTOMIZATION ====================
 st.set_page_config(page_title="GP Recharge Bundle Engine", page_icon="📱", layout="wide")
 
-st.title("📱 GP Recharge Bundle Engine")
+cyberpunk_css = """
+<style>
+    /* Global Cyberpunk Dark Theme with Subtle Neon Gradient Radial */
+    .stApp {
+        background-color: #05050a !important;
+        background-image: radial-gradient(at 0% 0%, hsla(250,30%,10%,1) 0, transparent 40%),
+                          radial-gradient(at 100% 100%, hsla(330,50%,12%,1) 0, transparent 40%) !important;
+        color: #e2e8f0 !important;
+    }
+    
+    /* Neon Text Styling for Headers */
+    h1, h2, h3, h4 {
+        color: #00f0ff !important;
+        text-shadow: 0 0 10px rgba(0, 240, 255, 0.5), 0 0 20px rgba(0, 240, 255, 0.2) !important;
+        font-family: 'Courier New', Courier, monospace !important;
+    }
+    
+    /* Input Fields Glassmorphism Effect */
+    div[data-baseweb="textarea"], div[data-baseweb="input"], .stFileUploader {
+        background: rgba(255, 255, 255, 0.03) !important;
+        backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(0, 240, 255, 0.25) !important;
+        border-radius: 12px !important;
+        box-shadow: inset 0 0 12px rgba(0, 240, 255, 0.05), 0 4px 15px rgba(0,0,0,0.5) !important;
+        color: #ffffff !important;
+        transition: all 0.3s ease;
+    }
+    div[data-baseweb="textarea"]:focus-within, div[data-baseweb="input"]:focus-within {
+        border-color: #ff007f !important;
+        box-shadow: 0 0 15px rgba(255, 0, 127, 0.4) !important;
+    }
+    
+    /* Labels styling */
+    label, .stWidgetFormLabel p {
+        color: #00f0ff !important;
+        font-weight: 600 !important;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Primary Neon Pink Button */
+    .stButton>button[kind="primary"] {
+        background: linear-gradient(45deg, #ff007f, #b500ff) !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: bold !important;
+        font-size: 16px !important;
+        padding: 12px 28px !important;
+        box-shadow: 0 0 15px rgba(255, 0, 127, 0.5) !important;
+        text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        transition: all 0.3s ease-in-out !important;
+    }
+    .stButton>button[kind="primary"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0 25px rgba(255, 0, 127, 0.9), 0 0 35px rgba(181, 0, 255, 0.4) !important;
+    }
+    
+    /* Secondary Neon Yellow/Orange Button */
+    .stButton>button[kind="secondary"] {
+        background: rgba(15, 15, 25, 0.8) !important;
+        color: #fdee11 !important;
+        border: 1px solid #fdee11 !important;
+        border-radius: 8px !important;
+        box-shadow: 0 0 10px rgba(253, 238, 17, 0.2) !important;
+        transition: all 0.3s ease !important;
+    }
+    .stButton>button[kind="secondary"]:hover {
+        background: #fdee11 !important;
+        color: #000000 !important;
+        box-shadow: 0 0 20px rgba(253, 238, 17, 0.7) !important;
+    }
+    
+    /* Glassy Analytics / Alert Cards */
+    div[data-testid="stNotification"] {
+        background: rgba(10, 10, 20, 0.6) !important;
+        backdrop-filter: blur(10px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-left: 5px solid #00f0ff !important;
+        border-radius: 10px !important;
+    }
+    
+    /* Metric Vibe */
+    div[data-testid="stMetricValue"] {
+        color: #ff007f !important;
+        font-weight: 800 !important;
+        text-shadow: 0 0 12px rgba(255, 0, 127, 0.6) !important;
+    }
+    
+    /* Transparent Background for Tables & JSON JSON */
+    .stJson, div[data-testid="stTable"] {
+        background: rgba(255, 255, 255, 0.02) !important;
+        border: 1px solid rgba(255, 255, 255, 0.05) !important;
+        border-radius: 10px;
+    }
+</style>
+"""
+st.markdown(cyberpunk_css, unsafe_allow_html=True)
+
+st.title("⚡ GP RECHARGE BUNDLE ENGINE")
+st.markdown("<p style='color:#ff007f; font-weight:bold; letter-spacing:1px;'>[ SYSTEM STATUS: CYBER-PIPELINE ONLINE ]</p>", unsafe_allow_html=True)
 st.markdown("---")
 
 col1, col2 = st.columns([1, 1])
@@ -162,8 +255,8 @@ with col1:
     # ফাইল আপলোড অপশন
     uploaded_file = st.file_uploader("Option A: Upload text file containing numbers (gp.txt)", type=["txt"])
     
-    # ডিরেক্ট পেস্ট অপশন (একাধিক নাম্বার পেস্টের জন্য এখন ১০০% রেডি)
-    pasted_numbers = st.text_area("Option B: Or Paste Target Numbers directly here:", height=120, placeholder="Example:\n01712345678\n01398765432\n01700000000, 01711111111")
+    # ডিরেক্ট পেস্ট বক্স (স্মার্ট রেগুলার এক্সপ্রেশন সাপোর্টেড)
+    pasted_numbers = st.text_area("Option B: Paste Target Numbers directly here (Any format):", height=120, placeholder="017XXXXXXXX\n013XXXXXXXX, 88017XXXXXXXX")
     
     # দুটো সোর্স কম্বাইন করা হচ্ছে
     combined_raw_numbers = ""
@@ -182,7 +275,7 @@ with col1:
 
 with col2:
     st.subheader("📋 Paste your SEU SCOUT output data or Raw Amount here:")
-    scout_input = st.text_area("Paste balance info here", height=150, placeholder="Example 1 (SCOUT):\nNumber: 01711223344 | Exact Balance: 20145 BDT\n\nExample 2 (Raw Amount):\n5000")
+    scout_input = st.text_area("Paste balance info here", height=150, placeholder="Example 1 (SCOUT):\nNumber: 01713532100 | Exact Balance: 20145 BDT\n\nExample 2 (Raw Amount):\n5000")
     
     detected_balance = parse_flexible_balance(scout_input)
     st.metric(label="💰 Total Input Balance Detected", value=f"{detected_balance} BDT")
@@ -190,15 +283,32 @@ with col2:
 # ==================== PLAN GENERATION & EXECUTION ====================
 if target_numbers and detected_balance > 0:
     st.markdown("---")
-    st.markdown("### 📊 Auto-Adjusted Plan")
+    st.markdown("### 📊 Auto-Adjusted Plan Grid")
     
     plan = []
     allocated_total = 0
+    jitter_amount = 1000  # জিটার মোডের জন্য প্রারম্ভিক বেস অ্যামাউন্ট
     
     for num in target_numbers:
-        if allocated_total + 1000 <= detected_balance:
-            plan.append({"msisdn": num, "amount": 1000})
-            allocated_total += 1000
+        # মোড অনুযায়ী অ্যামাউন্ট লজিক
+        if mode == "Normal":
+            amt_to_charge = 1000
+        else:  # 5-min Jitter (Anti-Duplicate)
+            amt_to_charge = jitter_amount
+            
+        # ব্যালেন্স চেক করে প্ল্যানে সেট করা
+        if allocated_total + amt_to_charge <= detected_balance:
+            if amt_to_charge > 0:
+                plan.append({"msisdn": num, "amount": amt_to_charge})
+                allocated_total += amt_to_charge
+                
+                # জিটার মোড অ্যাক্টিভ থাকলে পরবর্তী নাম্বারের জন্য ২০ টাকা মাইনাস হবে
+                if mode == "5-min Jitter (Anti-Duplicate)":
+                    jitter_amount -= 20
+                    if jitter_amount < 20:  
+                        jitter_amount = 1000
+        else:
+            break
             
     leftover = detected_balance - allocated_total
     
@@ -213,9 +323,9 @@ if target_numbers and detected_balance > 0:
         bkash_url = f"https://payment.bkash.com/?paymentId={mock_payment_id}&mode=0011&apiVersion=v1.2.0-beta"
         
         st.balloons()
-        st.success("🎉 SUCCESS: LINK GENERATED!")
+        st.success("🎉 SUCCESS: CYBER LINK GENERATED!")
         st.code(bkash_url, language="text")
-        st.markdown(f'<a href="{bkash_url}" target="_blank" style="background-color:#E11D48;color:white;padding:12px 24px;text-align:center;text-decoration:none;display:inline-block;border-radius:8px;font-weight:bold;font-size:16px;">🌸 Click Here to Open bKash Secure Gateway</a>', unsafe_allow_html=True)
+        st.markdown(f'<a href="{bkash_url}" target="_blank" style="background: linear-gradient(45deg, #E11D48, #ff007f); color:white; padding:14px 28px; text-align:center; text-decoration:none; display:inline-block; border-radius:10px; font-weight:bold; font-size:16px; box-shadow: 0 0 20px rgba(225,29,72,0.6);">🌸 Click Here to Open bKash Secure Gateway</a>', unsafe_allow_html=True)
         
         # ডাটাবেজ বা সেশন লগে পুশ
         timestamp_now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
@@ -238,12 +348,12 @@ if st.session_state.persistent_logs:
     col_b.metric("Unique Target Numbers", f"{len(st.session_state.unique_numbers)}")
     col_c.metric("Total Success Entries", f"{len(st.session_state.persistent_logs)}")
     
-    # ক্লিয়ার লগ বাটন
+    # নিয়ন ইয়েলো থিমের ক্লিয়ার লগ বাটন
     if st.button("🗑️ Clear All Logs & Analytics", type="secondary"):
         st.session_state.persistent_logs = []
         st.session_state.total_volume = 0
         st.session_state.unique_numbers = set()
-        st.success("All database logs and metrics cleared!")
+        st.success("All core database logs and metrics cleared!")
         st.rerun()
         
     st.markdown("#### 🎯 Aggregated Summary Table")
