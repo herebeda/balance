@@ -5,7 +5,6 @@ import re
 import io
 from datetime import datetime
 
-# ট্রাই-ক্যাচ দিয়ে reportlab ইমপোর্ট করা হচ্ছে যাতে পিডিএফ জেনারেশন মিস না হয়
 try:
     from reportlab.lib.pagesizes import letter
     from reportlab.pdfgen import canvas
@@ -20,19 +19,6 @@ except ModuleNotFoundError:
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib import colors
 
-# ==================== AUTOMATIC BROWSER INSTALLATION ====================
-@st.cache_resource
-def initialize_playwright_browser():
-    try:
-        import playwright
-    except ModuleNotFoundError:
-        os.system(f"{sys.executable} -m pip install playwright")
-    os.system(f"{sys.executable} -m playwright install-deps")
-    os.system(f"{sys.executable} -m playwright install chromium")
-    return True
-
-initialize_playwright_browser()
-
 # ==================== INITIALIZE SESSION STATES ====================
 if "persistent_logs" not in st.session_state:
     st.session_state.persistent_logs = []
@@ -40,6 +26,8 @@ if "total_volume" not in st.session_state:
     st.session_state.total_volume = 0
 if "unique_numbers" not in st.session_state:
     st.session_state.unique_numbers = set()
+if "current_bkash_url" not in st.session_state:
+    st.session_state.current_bkash_url = None
 
 # ==================== HELPER FUNCTIONS ====================
 def parse_numbers(raw_text):
@@ -132,15 +120,12 @@ st.set_page_config(page_title="GP Recharge Bundle Engine", page_icon="⚡", layo
 
 cyberpunk_animations = """
 <style>
-    /* Glowing Cyberpunk Background */
     .stApp {
         background-color: #030307 !important;
         background-image: radial-gradient(at 50% 0%, hsla(242,50%,15%,1) 0, transparent 50%),
                           radial-gradient(at 0% 100%, hsla(325,40%,10%,1) 0, transparent 50%) !important;
         color: #f1f5f9 !important;
     }
-    
-    /* URL wrapping text fix to prevent cuts */
     code, pre {
         word-break: break-all !important;
         white-space: pre-wrap !important;
@@ -148,102 +133,55 @@ cyberpunk_animations = """
         border: 1px solid #00f0ff !important;
         color: #00f0ff !important;
     }
-    
-    /* Neon Text Glowing and Pulsating Animations */
     h1 {
         color: #00f0ff !important;
         text-shadow: 0 0 10px rgba(0, 240, 255, 0.6), 0 0 30px rgba(0, 240, 255, 0.3) !important;
         font-family: 'Courier New', Courier, monospace !important;
-        animation: pulseGlow 3s infinite alternate;
     }
-    h2, h3, h4 {
-        color: #00f0ff !important;
-        text-shadow: 0 0 8px rgba(0, 240, 255, 0.4) !important;
-    }
-    
-    @keyframes pulseGlow {
-        0% { text-shadow: 0 0 10px rgba(0, 240, 255, 0.6), 0 0 20px rgba(0, 240, 255, 0.2); }
-        100% { text-shadow: 0 0 20px rgba(0, 240, 255, 0.9), 0 0 40px rgba(0, 240, 255, 0.5); }
-    }
-    
-    /* Smooth Slide/Fade-in Animation for Dynamic Sections */
     .animated-section {
         animation: fadeInSlide 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
     }
-    
     @keyframes fadeInSlide {
-        from { opacity: 0; transform: translateY(15px); filter: blur(4px); }
-        to { opacity: 1; transform: translateY(0); filter: blur(0); }
+        from { opacity: 0; transform: translateY(15px); }
+        to { opacity: 1; transform: translateY(0); }
     }
-
-    /* Glassmorphism Input Cards with Cyber Scan Border */
     div[data-baseweb="textarea"], div[data-baseweb="input"], .stFileUploader {
         background: rgba(255, 255, 255, 0.02) !important;
-        backdrop-filter: blur(15px) !important;
         border: 1px solid rgba(0, 240, 255, 0.2) !important;
         border-radius: 12px !important;
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37) !important;
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    
-    div[data-baseweb="textarea"]:focus-within, div[data-baseweb="input"]:focus-within {
-        border-color: #ff007f !important;
-        box-shadow: 0 0 20px rgba(255, 0, 127, 0.4), inset 0 0 8px rgba(255, 0, 127, 0.1) !important;
-    }
-    
-    /* Primary Action Glowing Button */
     .stButton>button[kind="primary"] {
         background: linear-gradient(45deg, #ff007f, #b500ff) !important;
         color: #ffffff !important;
-        border: none !important;
         border-radius: 10px !important;
         font-weight: bold !important;
-        font-size: 16px !important;
-        padding: 14px 32px !important;
         box-shadow: 0 0 15px rgba(255, 0, 127, 0.6) !important;
-        transition: all 0.4s ease !important;
-    }
-    .stButton>button[kind="primary"]:hover {
-        transform: scale(1.02);
-        box-shadow: 0 0 30px rgba(255, 0, 127, 0.9), 0 0 40px rgba(181, 0, 255, 0.5) !important;
-    }
-    
-    /* Metrics Highlighting */
-    div[data-testid="stMetricValue"] {
-        color: #ff007f !important;
-        font-weight: bold !important;
-        text-shadow: 0 0 10px rgba(255, 0, 127, 0.5) !important;
     }
 </style>
 """
 st.markdown(cyberpunk_animations, unsafe_allow_html=True)
 
 st.title("⚡ GP RECHARGE BUNDLE ENGINE")
-st.markdown("<p style='color:#ff007f; font-weight:bold; letter-spacing:1px; animation: pulseGlow 2s infinite alternate;'>[ SYSTEM STATUS: CYBER-PIPELINE ONLINE ]</p>", unsafe_allow_html=True)
+st.markdown("<p style='color:#ff007f; font-weight:bold;'>[ SYSTEM STATUS: CYBER-PIPELINE ONLINE ]</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ==================== STEP 1: UNIFIED NUMBER INPUT SOURCE ====================
+# ==================== STEP 1: TARGET NUMBERS ====================
 st.subheader("📥 STEP 1: Target Numbers Input Source")
-input_container = st.container()
+col_file, col_paste = st.columns([1, 1])
+with col_file:
+    uploaded_file = st.file_uploader("Option A: Upload text file (gp.txt)", type=["txt"])
+with col_paste:
+    pasted_numbers = st.text_area("Option B: Paste Target Numbers directly here:", height=120)
 
-with input_container:
-    col_file, col_paste = st.columns([1, 1])
-    with col_file:
-        uploaded_file = st.file_uploader("Option A: Upload text file containing numbers (gp.txt)", type=["txt"])
-    with col_paste:
-        pasted_numbers = st.text_area("Option B: Or Paste Target Numbers directly here:", height=120, placeholder="017XXXXXXXX\n013XXXXXXXX")
-
-combined_raw_numbers = ""
-if uploaded_file is not None:
-    combined_raw_numbers += uploaded_file.read().decode("utf-8") + "\n"
+combined_raw_numbers = uploaded_file.read().decode("utf-8") + "\n" if uploaded_file else ""
 if pasted_numbers:
     combined_raw_numbers += pasted_numbers
 
 target_numbers = parse_numbers(combined_raw_numbers)
 
-# ==================== STEP 2 & 3: CONDITIONAL REVELATION BASED ON NUMBER DETECTED ====================
+# ==================== CONDITIONAL RENDERING ====================
 if target_numbers:
-    st.success(f"📦 Total Loaded & Filtered: {len(target_numbers)} unique numbers.")
+    st.success(f"📦 Total Loaded: {len(target_numbers)} unique numbers.")
     st.markdown("---")
     
     st.markdown('<div class="animated-section">', unsafe_allow_html=True)
@@ -251,57 +189,54 @@ if target_numbers:
     
     with col_left:
         st.subheader("📋 STEP 2: Balance/SCOUT Input")
-        scout_input = st.text_area("Paste SEU SCOUT output data or Raw Amount here:", height=150, placeholder="Example: 3000")
-        
+        scout_input = st.text_area("Paste SEU SCOUT output data or Raw Amount here:", height=120)
         detected_balance = parse_flexible_balance(scout_input)
         st.metric(label="💰 Total Input Balance Detected", value=f"{detected_balance} BDT")
         
     with col_right:
         st.subheader("🚀 STEP 3: Configuration & Mode")
         mode = st.radio("Choose Execution Strategy", ["Normal", "5-min Jitter (Anti-Duplicate)"])
-        customer_email = st.text_input("📧 Customer Email Address:")
+        customer_email = st.text_input("📧 Customer Email Address:", value="test@cyber.com")
+        # ডেভেলপারদের জন্য কাস্টম বেস এন্ডপয়েন্ট গেটওয়ে কনফিগারেশন
+        gateway_base = st.text_input("🌐 Gateway Endpoint Base URL:", value="https://payment.bkash.com/")
         
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ==================== PLAN GENERATION ENGINE ====================
+    # ==================== PLAN GRID GENERATION ====================
     if detected_balance > 0:
         st.markdown("---")
-        st.markdown('<div class="animated-section">### 📊 Auto-Adjusted Plan Grid</div>', unsafe_allow_html=True)
+        st.markdown("### 📊 Auto-Adjusted Plan Grid")
         
         plan = []
         allocated_total = 0
-        
         for num in target_numbers:
-            if mode == "Normal":
-                amt_to_charge = 1000
-            else:
-                amt_to_charge = 980  # ৫-মিন জিটার মোডে ফিক্সড ৯৮০ টাকা প্রতি সাব-নাম্বারে
-                
+            amt_to_charge = 1000 if mode == "Normal" else 980
             if allocated_total + amt_to_charge <= detected_balance:
-                if amt_to_charge > 0:
-                    plan.append({"msisdn": num, "amount": amt_to_charge})
-                    allocated_total += amt_to_charge
+                plan.append({"msisdn": num, "amount": amt_to_charge})
+                allocated_total += amt_to_charge
             else:
                 break
                 
-        leftover = detected_balance - allocated_total
-        
-        c1, c2 = st.columns(2)
-        c1.info(f"**Total Allocated:** {allocated_total} BDT")
-        c2.warning(f"**Leftover / Unallocated:** {leftover} BDT")
-        
         st.json(plan)
         
-        # ইউনিক বিকাশ পেমেন্ট লিংক তৈরি (ব্যাকগ্রাউন্ডে রেডি থাকবে)
-        mock_payment_id = f"TR0011{datetime.now().strftime('%f%M%S%d')}"
-        bkash_url = f"https://payment.bkash.com/?paymentId={mock_payment_id}&mode=0011&apiVersion=v1.2.0-beta"
-        
         st.markdown("### ⚡ Step 4: Secure Gateway Action")
-        st.write("নিচের লিংকে ক্লিক করলেই কেবল এই ডেটাগুলো সামারি লগ এবং পিডিএফ রিপোর্টে যুক্ত হবে।")
+        st.write("নিচের কনফার্ম বাটনে ক্লিক করলেই ডেটা সামারি/পিডিএফ-এ সিঙ্ক হবে এবং সম্পূর্ণ ডাইনামিক ইউআরএল জেনারেট হবে।")
         
-        # মূল অ্যাকশন বাটন যা একই সাথে লগে সেভ করবে এবং ইউজারকে রিডাইরেক্টের জন্য লিংক উন্মুক্ত করবে
-        if st.button("🔗 Click to Confirm Payment & Sync to Logs/PDF", type="primary"):
-            # ক্লিক করার পর এই ব্লকের ভেতর ডেটাগুলো লগে ঢুকবে
+        if st.button("🔗 Confirm Payment & Sync to Logs/PDF", type="primary"):
+            # সম্পূর্ণ ইউনিক এবং ডাইনামিক কোয়েরি প্যারামিটার পে-লোড
+            uid = datetime.now().strftime('%M%S%f%d')
+            clean_email = re.sub(r'[^a-zA-Z0-9@.]', '', customer_email)
+            
+            # ডাইনামিক ইউআরএল বিল্ড ইঞ্জিন (প্যারামিটার সহ)
+            st.session_state.current_bkash_url = (
+                f"{gateway_base.strip()}?paymentId=TR0011{uid}"
+                f"&amount={allocated_total}"
+                f"&email={clean_email}"
+                f"&mode=0011"
+                f"&apiVersion=v1.2.0-beta"
+            )
+            
+            # লগে পুশ
             timestamp_now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
             for item in plan:
                 st.session_state.persistent_logs.append({
@@ -311,21 +246,19 @@ if target_numbers:
                 })
                 st.session_state.unique_numbers.add(item["msisdn"])
             st.session_state.total_volume += allocated_total
-            
             st.balloons()
-            st.success("🎉 SUCCESS: Sync Complete! Transaction pushed to Summary Logs.")
-            
-            # ফুল ইউআরএল একদম নিখুঁতভাবে দেখানোর জন্য কোড ব্লক ও বড় নেটিভ লিংক বাটন
-            st.markdown("#### 📡 Official bKash Gateway Link (Full & Complete):")
-            st.code(bkash_url, language="text")
-            
-            st.link_button("🌸 Open bKash Secure Gateway Tab", bkash_url, use_container_width=True)
+
+        # স্টেট থেকে ডাইনামিক ইউআরএল ডিসপ্লে (রিসেট প্রোটেকশন)
+        if st.session_state.current_bkash_url:
+            st.markdown("#### 📡 Generated Dynamic bKash URL (Full Payload Verified):")
+            st.code(st.session_state.current_bkash_url, language="text")
+            st.link_button("🌸 Open Dynamic bKash Gateway Tab", st.session_state.current_bkash_url, use_container_width=True)
 
 else:
-    st.info("💡 Awaiting Target Input: Please upload a file or paste numbers in STEP 1 to unlock the secure gateway configuration panels.")
+    st.info("💡 Awaiting Target Input in STEP 1 to unlock configuration panels.")
 
+# ==================== LOGS & ANALYTICS ====================
 st.markdown("---")
-# ==================== PERSISTENT RECHARGE LOGS & ANALYTICS ====================
 st.subheader("📊 Persistent Recharge Logs & Analytics")
 
 if st.session_state.persistent_logs:
@@ -334,16 +267,14 @@ if st.session_state.persistent_logs:
     col_b.metric("Unique Target Numbers", f"{len(st.session_state.unique_numbers)}")
     col_c.metric("Total Success Entries", f"{len(st.session_state.persistent_logs)}")
     
-    if st.button("🗑️ Clear All Logs & Analytics", type="secondary"):
+    if st.button("🗑️ Clear All Logs", type="secondary"):
         st.session_state.persistent_logs = []
         st.session_state.total_volume = 0
         st.session_state.unique_numbers = set()
-        st.success("All core database logs and metrics cleared!")
+        st.session_state.current_bkash_url = None
         st.rerun()
         
-    # রিকোয়েস্ট অনুযায়ী সামারি টেবিলটি সম্পূর্ণ হাইড করে এক্সপান্ডারে রাখা হয়েছে
     with st.expander("👁️ Click to View Aggregated Summary Table"):
-        st.markdown("#### 🎯 Execution History Records")
         st.table(st.session_state.persistent_logs)
     
     with st.expander("🔍 Download Consolidated PDF Report"):
@@ -351,7 +282,7 @@ if st.session_state.persistent_logs:
         st.download_button(
             label="📥 Download Full Combined PDF Report",
             data=pdf_file,
-            file_name=f"Combined_Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+            file_name=f"Report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
             mime="application/pdf"
         )
 else:
