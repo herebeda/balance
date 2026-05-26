@@ -2,8 +2,6 @@ import streamlit as st
 import os
 import sys
 import re
-import asyncio
-import json
 import io
 from datetime import datetime
 
@@ -142,10 +140,13 @@ cyberpunk_animations = """
         color: #f1f5f9 !important;
     }
     
-    /* URL and Code Blocks Truncation Fix */
-    code, a, pre {
+    /* URL wrapping text fix to prevent cuts */
+    code, pre {
         word-break: break-all !important;
         white-space: pre-wrap !important;
+        background-color: #090914 !important;
+        border: 1px solid #00f0ff !important;
+        color: #00f0ff !important;
     }
     
     /* Neon Text Glowing and Pulsating Animations */
@@ -232,7 +233,6 @@ with input_container:
     with col_paste:
         pasted_numbers = st.text_area("Option B: Or Paste Target Numbers directly here:", height=120, placeholder="017XXXXXXXX\n013XXXXXXXX")
 
-# দুটো ইনপুট সোর্স কম্বাইন করে পার্স করা হচ্ছে
 combined_raw_numbers = ""
 if uploaded_file is not None:
     combined_raw_numbers += uploaded_file.read().decode("utf-8") + "\n"
@@ -246,14 +246,12 @@ if target_numbers:
     st.success(f"📦 Total Loaded & Filtered: {len(target_numbers)} unique numbers.")
     st.markdown("---")
     
-    # এনিমেশন কন্টেইনার স্টার্ট
     st.markdown('<div class="animated-section">', unsafe_allow_html=True)
-    
     col_left, col_right = st.columns([1, 1])
     
     with col_left:
         st.subheader("📋 STEP 2: Balance/SCOUT Input")
-        scout_input = st.text_area("Paste SEU SCOUT output data or Raw Amount here:", height=150, placeholder="Example: 3000 or Exact Balance: 20145")
+        scout_input = st.text_area("Paste SEU SCOUT output data or Raw Amount here:", height=150, placeholder="Example: 3000")
         
         detected_balance = parse_flexible_balance(scout_input)
         st.metric(label="💰 Total Input Balance Detected", value=f"{detected_balance} BDT")
@@ -274,13 +272,11 @@ if target_numbers:
         allocated_total = 0
         
         for num in target_numbers:
-            # মোড সিলেকশন লজিক (৫-মিন জিটার সিলেক্ট করলে সব নাম্বারে ফিক্সড ২০ টাকা কমবে অর্থাৎ ৯৮০ টাকা)
             if mode == "Normal":
                 amt_to_charge = 1000
-            else:  # 5-min Jitter (Anti-Duplicate)
-                amt_to_charge = 980
+            else:
+                amt_to_charge = 980  # ৫-মিন জিটার মোডে ফিক্সড ৯৮০ টাকা প্রতি সাব-নাম্বারে
                 
-            # ব্যালেন্স ও সেফটি চেক
             if allocated_total + amt_to_charge <= detected_balance:
                 if amt_to_charge > 0:
                     plan.append({"msisdn": num, "amount": amt_to_charge})
@@ -296,21 +292,16 @@ if target_numbers:
         
         st.json(plan)
         
-        if st.button("⚡ Process & Generate bKash Gateway Link", type="primary"):
-            # ইউনিক র্যান্ডম আইডি মেকিং
-            mock_payment_id = f"TR0011{datetime.now().strftime('%f%M%S%d')}"
-            bkash_url = f"https://payment.bkash.com/?paymentId={mock_payment_id}&mode=0011&apiVersion=v1.2.0-beta"
-            
-            st.balloons()
-            st.success("🎉 SUCCESS: CYBER LINK GENERATED SUCCESSFULLY!")
-            
-            # ফুল লিংক ডিসপ্লে বক্স (সিএসএস ব্রেক ফিক্সড)
-            st.markdown("**🔗 Secure Gateway Target URL:**")
-            st.code(bkash_url, language="text")
-            
-            st.markdown(f'<div style="margin-top:15px;"><a href="{bkash_url}" target="_blank" style="background: linear-gradient(45deg, #E11D48, #ff007f); color:white; padding:14px 28px; text-align:center; text-decoration:none; display:inline-block; border-radius:10px; font-weight:bold; font-size:16px; box-shadow: 0 0 20px rgba(225,29,72,0.6); word-break: break-all !important;">🌸 Click Here to Open bKash Secure Gateway</a></div>', unsafe_allow_html=True)
-            
-            # পারসিস্টেন্ট লগে পুশ
+        # ইউনিক বিকাশ পেমেন্ট লিংক তৈরি (ব্যাকগ্রাউন্ডে রেডি থাকবে)
+        mock_payment_id = f"TR0011{datetime.now().strftime('%f%M%S%d')}"
+        bkash_url = f"https://payment.bkash.com/?paymentId={mock_payment_id}&mode=0011&apiVersion=v1.2.0-beta"
+        
+        st.markdown("### ⚡ Step 4: Secure Gateway Action")
+        st.write("নিচের লিংকে ক্লিক করলেই কেবল এই ডেটাগুলো সামারি লগ এবং পিডিএফ রিপোর্টে যুক্ত হবে।")
+        
+        # মূল অ্যাকশন বাটন যা একই সাথে লগে সেভ করবে এবং ইউজারকে রিডাইরেক্টের জন্য লিংক উন্মুক্ত করবে
+        if st.button("🔗 Click to Confirm Payment & Sync to Logs/PDF", type="primary"):
+            # ক্লিক করার পর এই ব্লকের ভেতর ডেটাগুলো লগে ঢুকবে
             timestamp_now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
             for item in plan:
                 st.session_state.persistent_logs.append({
@@ -320,6 +311,15 @@ if target_numbers:
                 })
                 st.session_state.unique_numbers.add(item["msisdn"])
             st.session_state.total_volume += allocated_total
+            
+            st.balloons()
+            st.success("🎉 SUCCESS: Sync Complete! Transaction pushed to Summary Logs.")
+            
+            # ফুল ইউআরএল একদম নিখুঁতভাবে দেখানোর জন্য কোড ব্লক ও বড় নেটিভ লিংক বাটন
+            st.markdown("#### 📡 Official bKash Gateway Link (Full & Complete):")
+            st.code(bkash_url, language="text")
+            
+            st.link_button("🌸 Open bKash Secure Gateway Tab", bkash_url, use_container_width=True)
 
 else:
     st.info("💡 Awaiting Target Input: Please upload a file or paste numbers in STEP 1 to unlock the secure gateway configuration panels.")
@@ -341,7 +341,7 @@ if st.session_state.persistent_logs:
         st.success("All core database logs and metrics cleared!")
         st.rerun()
         
-    # রিকোয়েস্ট অনুযায়ী সামারি টেবিলটি হাইড করে এক্সপান্ডারে রাখা হয়েছে
+    # রিকোয়েস্ট অনুযায়ী সামারি টেবিলটি সম্পূর্ণ হাইড করে এক্সপান্ডারে রাখা হয়েছে
     with st.expander("👁️ Click to View Aggregated Summary Table"):
         st.markdown("#### 🎯 Execution History Records")
         st.table(st.session_state.persistent_logs)
