@@ -45,29 +45,19 @@ if "unique_numbers" not in st.session_state:
 
 # ==================== HELPER FUNCTIONS ====================
 def parse_numbers(raw_text):
-    """
-    গ্লোবাল রেগুলার এক্সপ্রেশন ইঞ্জিন: টেক্সটের ভেতর থেকে সমস্ত 013 এবং 017 নাম্বার 
-    সেপারেটর নির্বিশেষে (কমা, স্পেস, নিউলাইন) নিখুঁতভাবে এক্সট্রাক্ট করবে।
-    """
     if not raw_text:
         return []
-    
     matches = re.findall(r'(?:88)?01[37]\d{8}', raw_text)
-    
     valid_numbers = []
     for num in matches:
         if num.startswith('880'):
-            cleaned = num[2:]  # 88 বাদ দিয়ে মূল ১১ ডিজিট রাখবে
+            cleaned = num[2:]
         else:
             cleaned = num
         valid_numbers.append(cleaned)
-        
-    return list(dict.fromkeys(valid_numbers))  # ডুপ্লিকেট রিমুভ করবে
+    return list(dict.fromkeys(valid_numbers))
 
 def parse_flexible_balance(input_data):
-    """
-    SEU SCOUT ফরম্যাট এবং ডিরেক্ট র অ্যামাউন্ট (যেমন: 5000) দুটাই হ্যান্ডেল করবে
-    """
     if not input_data:
         return 0
     input_data = input_data.strip()
@@ -139,7 +129,7 @@ def generate_combined_pdf_report(logs, total_vol):
     buffer.seek(0)
     return buffer
 
-# ==================== STREAMLIT UI & ANIMATED CYBERPUNK CSS ====================
+# ==================== STREAMLIT UI & ULTRA ANIMATED CYBERPUNK CSS ====================
 st.set_page_config(page_title="GP Recharge Bundle Engine", page_icon="⚡", layout="wide")
 
 cyberpunk_animations = """
@@ -150,6 +140,12 @@ cyberpunk_animations = """
         background-image: radial-gradient(at 50% 0%, hsla(242,50%,15%,1) 0, transparent 50%),
                           radial-gradient(at 0% 100%, hsla(325,40%,10%,1) 0, transparent 50%) !important;
         color: #f1f5f9 !important;
+    }
+    
+    /* URL and Code Blocks Truncation Fix */
+    code, a, pre {
+        word-break: break-all !important;
+        white-space: pre-wrap !important;
     }
     
     /* Neon Text Glowing and Pulsating Animations */
@@ -250,14 +246,14 @@ if target_numbers:
     st.success(f"📦 Total Loaded & Filtered: {len(target_numbers)} unique numbers.")
     st.markdown("---")
     
-    # এনিমেশন রেন্ডারের জন্য কন্টেইনার
+    # এনিমেশন কন্টেইনার স্টার্ট
     st.markdown('<div class="animated-section">', unsafe_allow_html=True)
     
     col_left, col_right = st.columns([1, 1])
     
     with col_left:
         st.subheader("📋 STEP 2: Balance/SCOUT Input")
-        scout_input = st.text_area("Paste SEU SCOUT output data or Raw Amount here:", height=150, placeholder="Example: 5000 or Exact Balance: 20145")
+        scout_input = st.text_area("Paste SEU SCOUT output data or Raw Amount here:", height=150, placeholder="Example: 3000 or Exact Balance: 20145")
         
         detected_balance = parse_flexible_balance(scout_input)
         st.metric(label="💰 Total Input Balance Detected", value=f"{detected_balance} BDT")
@@ -276,26 +272,19 @@ if target_numbers:
         
         plan = []
         allocated_total = 0
-        jitter_amount = 980  # জিজার মোডের জন্য ১ম নাম্বার থেকেই ২০ টাকা মাইনাস (১০০০ - ২০ = ৯৮০)
         
         for num in target_numbers:
-            # মোড সিলেকশন লজিক
+            # মোড সিলেকশন লজিক (৫-মিন জিটার সিলেক্ট করলে সব নাম্বারে ফিক্সড ২০ টাকা কমবে অর্থাৎ ৯৮০ টাকা)
             if mode == "Normal":
                 amt_to_charge = 1000
             else:  # 5-min Jitter (Anti-Duplicate)
-                amt_to_charge = jitter_amount
+                amt_to_charge = 980
                 
             # ব্যালেন্স ও সেফটি চেক
             if allocated_total + amt_to_charge <= detected_balance:
                 if amt_to_charge > 0:
                     plan.append({"msisdn": num, "amount": amt_to_charge})
                     allocated_total += amt_to_charge
-                    
-                    # জিজার মোড অন থাকলে পরবর্তী প্রত্যেক নাম্বারের জন্য আরও ২০ টাকা মাইনাস হবে
-                    if mode == "5-min Jitter (Anti-Duplicate)":
-                        jitter_amount -= 20
-                        if jitter_amount < 20:  # অ্যামাউন্ট সেফটি লিমিট
-                            jitter_amount = 980
             else:
                 break
                 
@@ -308,13 +297,18 @@ if target_numbers:
         st.json(plan)
         
         if st.button("⚡ Process & Generate bKash Gateway Link", type="primary"):
-            mock_payment_id = f"TR0011{datetime.now().strftime('%f%M%S')}"
+            # ইউনিক র্যান্ডম আইডি মেকিং
+            mock_payment_id = f"TR0011{datetime.now().strftime('%f%M%S%d')}"
             bkash_url = f"https://payment.bkash.com/?paymentId={mock_payment_id}&mode=0011&apiVersion=v1.2.0-beta"
             
             st.balloons()
-            st.success("🎉 SUCCESS: CYBER LINK GENERATED!")
+            st.success("🎉 SUCCESS: CYBER LINK GENERATED SUCCESSFULLY!")
+            
+            # ফুল লিংক ডিসপ্লে বক্স (সিএসএস ব্রেক ফিক্সড)
+            st.markdown("**🔗 Secure Gateway Target URL:**")
             st.code(bkash_url, language="text")
-            st.markdown(f'<a href="{bkash_url}" target="_blank" style="background: linear-gradient(45deg, #E11D48, #ff007f); color:white; padding:14px 28px; text-align:center; text-decoration:none; display:inline-block; border-radius:10px; font-weight:bold; font-size:16px; box-shadow: 0 0 20px rgba(225,29,72,0.6);">🌸 Click Here to Open bKash Secure Gateway</a>', unsafe_allow_html=True)
+            
+            st.markdown(f'<div style="margin-top:15px;"><a href="{bkash_url}" target="_blank" style="background: linear-gradient(45deg, #E11D48, #ff007f); color:white; padding:14px 28px; text-align:center; text-decoration:none; display:inline-block; border-radius:10px; font-weight:bold; font-size:16px; box-shadow: 0 0 20px rgba(225,29,72,0.6); word-break: break-all !important;">🌸 Click Here to Open bKash Secure Gateway</a></div>', unsafe_allow_html=True)
             
             # পারসিস্টেন্ট লগে পুশ
             timestamp_now = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
@@ -347,8 +341,10 @@ if st.session_state.persistent_logs:
         st.success("All core database logs and metrics cleared!")
         st.rerun()
         
-    st.markdown("#### 🎯 Aggregated Summary Table")
-    st.table(st.session_state.persistent_logs)
+    # রিকোয়েস্ট অনুযায়ী সামারি টেবিলটি হাইড করে এক্সপান্ডারে রাখা হয়েছে
+    with st.expander("👁️ Click to View Aggregated Summary Table"):
+        st.markdown("#### 🎯 Execution History Records")
+        st.table(st.session_state.persistent_logs)
     
     with st.expander("🔍 Download Consolidated PDF Report"):
         pdf_file = generate_combined_pdf_report(st.session_state.persistent_logs, st.session_state.total_volume)
