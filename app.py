@@ -14,7 +14,8 @@ def initialize_playwright_browser():
         import playwright
     except ModuleNotFoundError:
         os.system(f"{sys.executable} -m pip install playwright")
-    os.system(f"{sys.executable} -m playwright install-deps")
+    
+    # packages.txt দিয়ে সিস্টেম ডিপেন্ডেন্সি ইনস্টল হওয়ায় এখানে শুধু chromium ডাউনলোড হবে
     os.system(f"{sys.executable} -m playwright install chromium")
     return True
 
@@ -64,7 +65,7 @@ def parse_numbers(raw_text):
             cleaned = num[2:]
         else:
             cleaned = num
-            valid_numbers.append(cleaned)
+        valid_numbers.append(cleaned)
     return list(dict.fromkeys(valid_numbers))
 
 def parse_flexible_balance(input_data):
@@ -145,7 +146,7 @@ async def inject_gp_live_pipeline(pipeline_plan, customer_email):
         try:
             browser = await p.chromium.launch(
                 headless=True,
-                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled']
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage', '--disable-blink-features=AutomationControlled']
             )
             context = await browser.new_context(
                 viewport={"width": 1366, "height": 768},
